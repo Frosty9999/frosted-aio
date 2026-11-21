@@ -1,6 +1,6 @@
 {
   "name": "frosted-aio",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Unofficial control app for TRYX Panorama AIO coolers: pump-screen media, stats overlay, fan curve. Not affiliated with TRYX.",
   "author": "Frosty9999",
   "license": "MIT",

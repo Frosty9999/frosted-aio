@@ -70,7 +70,7 @@ npm run dist
 ```
 
 - `npm run vendor` downloads FFmpeg 8.1 (BtbN GPL build) and LibreHardwareMonitorLib 0.9.6 into `vendor\`.
-- `npm run dist` builds `dist\Frosted-AIO-Setup-<version>.exe`.
+- `npm run dist` builds `dist\Frosted-AIO-Setup-<version>.exe`. After editing `build/icon.svg`, run `npm run icon` to regenerate every icon size.
 - For development, `npm start` runs the app from source (as administrator, for sensors and the cooler).
 - `npm start -- --ui-test` runs the interface without touching the cooler, with sample data and throwaway settings.
 

@@ -13,52 +13,15 @@ const run = (file, args) =>
     execFile(file, args, { windowsHide: true }, (err, stdout, stderr) => resolve({ ok: !err, stdout, stderr }));
   });
 
-// The app icon: a teal ring with a centre dot, drawn in code so the app doesn't ship TRYX's icon.
-// With `disc`, it sits on a dark circle so it stays visible on any desktop wallpaper.
-function ringImage(size, { disc = false } = {}) {
-  const k = size / 32; // proportions designed at 32px
-  const buf = Buffer.alloc(size * size * 4);
-  const c = (size - 1) / 2;
-  const clamp = (v) => Math.max(0, Math.min(1, v));
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const d = Math.hypot(x - c, y - c);
-      // Solid shapes with a one-pixel anti-aliased edge, so they stay crisp at any size.
-      const ring = clamp(1.7 * k - Math.abs(d - 11 * k) + 0.5);
-      const dot = clamp(4.5 * k - d + 0.5);
-      const fg = Math.min(1, ring + dot);
-      const bg = disc ? clamp(15.5 * k - d + 0.5) : 0;
-      // Teal over dark grey (#14161b), then premultiply (Windows needs colour scaled by alpha).
-      const a = fg + bg * (1 - fg);
-      const mix = (t, b) => (a ? (t * fg + b * bg * (1 - fg)) : 0);
-      const i = (y * size + x) * 4; // BGRA
-      buf[i] = Math.round(mix(0xc0, 0x1b));
-      buf[i + 1] = Math.round(mix(0xd3, 0x16));
-      buf[i + 2] = Math.round(mix(0x7d, 0x14));
-      buf[i + 3] = Math.round(a * 255);
-    }
-  }
-  return nativeImage.createFromBitmap(buf, { width: size, height: size });
-}
+// The app icon: the frosted ring (build/icon.svg), pre-rendered by `npm run icon` into src/assets.
+const ASSETS = path.join(__dirname, 'assets');
 
-const trayIcon = () => ringImage(32);
+// Tray: 16 px, with tray@2x.png picked up automatically on high-DPI screens.
+const trayIcon = () => nativeImage.createFromPath(path.join(ASSETS, 'tray.png'));
 
-// A .ico holding one 256px PNG (supported since Windows Vista).
+// Desktop-shortcut icon for the development copy (the installed app uses the exe's own icon).
 function writeIco(file) {
-  const png = ringImage(256, { disc: true }).toPNG();
-  const header = Buffer.alloc(22);
-  header.writeUInt16LE(0, 0); // reserved
-  header.writeUInt16LE(1, 2); // type: icon
-  header.writeUInt16LE(1, 4); // one image
-  header.writeUInt8(0, 6); // width 256
-  header.writeUInt8(0, 7); // height 256
-  header.writeUInt8(0, 8); // palette
-  header.writeUInt8(0, 9); // reserved
-  header.writeUInt16LE(1, 10); // planes
-  header.writeUInt16LE(32, 12); // bits per pixel
-  header.writeUInt32LE(png.length, 14);
-  header.writeUInt32LE(22, 18); // data offset
-  fs.writeFileSync(file, Buffer.concat([header, png]));
+  fs.copyFileSync(path.join(ASSETS, 'icon.ico'), file);
 }
 
 // ---------- start with Windows ----------
@@ -312,7 +275,6 @@ async function setKanaliAutostart(enable) {
 
 module.exports = {
   trayIcon,
-  ringImage,
   writeIco,
   isAutostartEnabled,
   setAutostart,

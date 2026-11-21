@@ -791,6 +791,7 @@ function quitApp() {
 
 function createWindow() {
   win = new BrowserWindow({
+    icon: path.join(__dirname, 'assets', 'icon.ico'), // taskbar/window icon when running from source
     width: 1180,
     height: 780,
     minWidth: 900,
