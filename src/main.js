@@ -168,6 +168,14 @@ function loadSettings() {
   if (!/^\d{6}$/.test(settings.remote.pin)) settings.remote.pin = newPin();
   const port = Number(settings.remote.port);
   settings.remote.port = Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : DEFAULTS.remote.port;
+  // Keep the new profile ids and PIN stable from the first start.
+  if (!Array.isArray(saved.profiles) || !saved.profiles.length || saved.remote?.pin !== settings.remote.pin) {
+    try {
+      saveSettings();
+    } catch (e) {
+      log('could not save settings:', e.message);
+    }
+  }
   log('loaded settings from', settingsFile(), 'keys=', Object.keys(saved).length, 'saved.media=', saved.media, 'media=', settings.media);
 }
 
