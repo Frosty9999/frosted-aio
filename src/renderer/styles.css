@@ -406,6 +406,71 @@ button.ghost.icon svg { width: 14px; height: 14px; fill: currentColor; }
   .overlay-editor { grid-template-columns: 1fr; }
 }
 
+/* ---------- title bar chips: active profile, alert ---------- */
+.top-chip {
+  -webkit-app-region: no-drag; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 999px; padding: 2px 10px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+button.top-chip:hover { color: var(--text); border-color: var(--faint); }
+.top-chip.alert { color: #fff; background: var(--hot); border-color: var(--hot); font-weight: 600; animation: pulse 1.6s infinite; }
+
+/* ---------- temperature alerts ---------- */
+.alerts .night-head b { font-weight: 600; }
+.alert-grid { display: flex; flex-wrap: wrap; gap: 10px 24px; padding-left: 24px; }
+.alert-limit { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.num {
+  width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; color: var(--text);
+  font: 13px inherit; font-family: inherit; font-variant-numeric: tabular-nums; user-select: text; color-scheme: dark;
+}
+.num.wide { width: 86px; }
+.alert-checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; padding-left: 24px; }
+.alerts > .hint { margin: 12px 0 0; }
+.alerts.off .alert-grid, .alerts.off .alert-checks { opacity: 0.4; pointer-events: none; }
+.night-status.alert-on { color: #fff; background: var(--hot); border-color: var(--hot); }
+
+/* ---------- profiles ---------- */
+.prof-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.prof { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.prof.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim) inset; }
+.prof-head { display: flex; align-items: center; gap: 10px; }
+.prof-head .text-in { flex: 0 1 260px; font-weight: 600; }
+.prof-head .spacer { flex: 1; }
+.prof-tag { font-size: 11.5px; font-weight: 600; color: var(--bg); background: var(--accent); border-radius: 999px; padding: 2px 10px; }
+.prof-tag.auto { background: #8ab4ff; }
+.prof-sum { margin: 8px 0 0; color: var(--faint); font-size: 12px; }
+.prof-apps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.prof-apps .color-label { margin-right: 6px; }
+.app-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.app-chip button { border: 0; background: none; color: var(--faint); width: 18px; height: 18px; border-radius: 50%; padding: 0; line-height: 18px; }
+.app-chip button:hover { color: var(--text); background: var(--line); }
+.prof-apps select { max-width: 280px; font-size: 12px; padding: 4px 8px; }
+button.ghost.small { padding: 3px 10px; font-size: 12px; }
+button.ghost.danger:hover { color: #f5a3a3; border-color: rgba(240, 107, 107, 0.5); }
+
+/* ---------- keyboard shortcuts ---------- */
+.keybtn {
+  min-width: 170px; text-align: center; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px;
+  color: var(--text); font: 12.5px ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.keybtn.empty { color: var(--faint); font-family: inherit; }
+.keybtn.rec { border-color: var(--accent); color: var(--accent); animation: pulse 1.2s infinite; }
+.keybtn.bad { border-color: var(--hot); }
+.key-row { display: flex; align-items: center; gap: 6px; flex: none; }
+.key-row .x { border: 0; background: none; color: var(--faint); width: 24px; height: 24px; border-radius: 50%; }
+.key-row .x:hover { color: var(--text); background: var(--line); }
+.item p.bad { color: #f5a3a3; }
+
+/* ---------- phone remote ---------- */
+.remote-card { display: flex; gap: 22px; align-items: flex-start; margin-top: 10px; }
+.qr { width: 172px; height: 172px; border-radius: 10px; background: #fff; flex: none; image-rendering: pixelated; }
+.remote-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.remote-info .hint { margin: 0; }
+.remote-url { font: 15px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--accent); user-select: text; word-break: break-all; }
+.remote-url div + div { color: var(--muted); font-size: 12.5px; }
+.remote-pin { display: flex; align-items: center; gap: 12px; }
+.remote-pin b { font: 600 26px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 0.18em; user-select: text; }
+.remote-err { color: #f5a3a3; margin: 0; font-size: 12.5px; }
+
 /* ---------- fan curve ---------- */
 #curve { width: 100%; height: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: block; }
 #curve .grid line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }

@@ -11,6 +11,8 @@
   <header class="titlebar">
     <span class="brand"><img class="logo" src="../assets/icon-64.png" alt="" />Frosted-AIO</span>
     <span class="conn" id="conn" data-state="idle"><i></i><span id="connText">Starting…</span></span>
+    <button class="top-chip" id="profileChip" title="Active profile"></button>
+    <span class="top-chip alert" id="alertChip" hidden></span>
   </header>
 
   <div class="shell">
@@ -18,7 +20,9 @@
       <button class="active" data-view="overview">Overview</button>
       <button data-view="screen">Screen</button>
       <button data-view="cooling">Cooling</button>
+      <button data-view="profiles">Profiles</button>
       <button data-view="history">History</button>
+      <button data-view="controls">Controls</button>
       <button data-view="settings">Settings</button>
     </nav>
 
@@ -257,6 +261,81 @@
         <div id="fixedBlock" class="field">
           <label for="fixed">Fixed speed <output id="fixedVal"></output></label>
           <input type="range" id="fixed" min="10" max="100" step="5" />
+        </div>
+
+        <h4>Temperature alerts</h4>
+        <div class="card alerts">
+          <div class="night-head">
+            <label class="check"><input type="checkbox" id="alertsOn" /><span><b>Warn me when it gets too hot</b></span></label>
+            <span class="night-status" id="alertStatus">No alert</span>
+          </div>
+          <div class="alert-grid">
+            <label class="alert-limit">CPU over <input type="number" class="num" id="alertCpu" min="40" max="120" /> <span class="unit">°C</span></label>
+            <label class="alert-limit">GPU over <input type="number" class="num" id="alertGpu" min="40" max="120" /> <span class="unit">°C</span></label>
+            <label class="alert-limit">for <select id="alertSeconds">
+              <option value="1">1 second</option>
+              <option value="5">5 seconds</option>
+              <option value="10">10 seconds</option>
+              <option value="30">30 seconds</option>
+            </select></label>
+          </div>
+          <div class="alert-checks">
+            <label class="check"><input type="checkbox" id="alertNotify" /><span>Windows notification</span></label>
+            <label class="check"><input type="checkbox" id="alertFan" /><span>Fans to 100%</span></label>
+            <label class="check"><input type="checkbox" id="alertRed" /><span>Red overlay text on the pump screen</span></label>
+          </div>
+          <p class="hint">The alert ends once the temperature is 5° under the limit. Notifications repeat at most every 5 minutes.</p>
+        </div>
+      </section>
+
+      <!-- PROFILES -->
+      <section class="view" id="view-profiles">
+        <div class="row-head">
+          <h2>Profiles</h2>
+          <button class="ghost" id="profNew">+ New profile</button>
+        </div>
+        <p class="hint">A profile remembers your pump-screen media and brightness, the stats overlay, Now Playing and the fan curve.
+          Changes you make on the other tabs are saved to the active profile. New profiles start as a copy of the active one.</p>
+        <div class="list tight">
+          <div class="item">
+            <div><b>Switch automatically when a game or program starts</b><p>Checks every few seconds. When it closes, you go back to the profile you were on.</p></div>
+            <label class="switch"><input type="checkbox" id="autoSwitch" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Notify me when the profile switches by itself</b><p>A quiet Windows notification when a program or keyboard shortcut changes the profile.</p></div>
+            <label class="switch"><input type="checkbox" id="profileToasts" /><span></span></label>
+          </div>
+        </div>
+        <div class="prof-list" id="profList"></div>
+      </section>
+
+      <!-- CONTROLS -->
+      <section class="view" id="view-controls">
+        <h2>Controls</h2>
+        <h4>Keyboard shortcuts</h4>
+        <p class="hint">These work anywhere in Windows, even with Frosted-AIO in the tray. Click a shortcut, then press the keys
+          (use Ctrl, Alt or Shift with a key, or an F-key). Esc cancels, Backspace clears.</p>
+        <div class="list tight" id="hotkeyList"></div>
+
+        <h4>Phone remote</h4>
+        <div class="list tight">
+          <div class="item">
+            <div><b>Control Frosted-AIO from your phone</b><p>Open a page in your phone's browser on the same Wi-Fi to switch profiles, videos, brightness, night mode and fan boost.
+              Only devices on your home network can connect, and they need the PIN.</p></div>
+            <label class="switch"><input type="checkbox" id="remoteOn" /><span></span></label>
+          </div>
+        </div>
+        <div class="remote-card card" id="remoteCard" hidden>
+          <img class="qr" id="remoteQr" alt="QR code for the phone remote" />
+          <div class="remote-info">
+            <p class="hint inline">Scan the code with your phone's camera, or open this address:</p>
+            <div class="remote-url" id="remoteUrl"></div>
+            <div class="remote-pin"><span class="hint inline">PIN</span><b id="remotePin"></b><button class="ghost" id="remoteNewPin">New PIN</button></div>
+            <p class="remote-err" id="remoteErr" hidden></p>
+            <p class="hint">Windows may ask whether to let Frosted-AIO use the network. Allow it on <b>private networks</b> only.
+              A new PIN signs out every phone.</p>
+            <label class="alert-limit">Port <input type="number" class="num wide" id="remotePort" min="1024" max="65535" /></label>
+          </div>
         </div>
       </section>
 

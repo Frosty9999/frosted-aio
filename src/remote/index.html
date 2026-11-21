@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0d10" />
+  <meta name="color-scheme" content="dark" />
+  <title>Frosted-AIO Remote</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="stylesheet" href="/remote.css" />
+</head>
+<body>
+  <header>
+    <img src="/icon.png" alt="" />
+    <b>Frosted-AIO</b>
+    <span class="conn" id="conn"><i></i><span id="connText">…</span></span>
+  </header>
+
+  <!-- PIN -->
+  <section id="login" hidden>
+    <h1>Enter the PIN</h1>
+    <p>It's shown in Frosted-AIO on your PC, under <b>Controls → Phone remote</b>.</p>
+    <form id="loginForm">
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="000000" />
+      <button type="submit">Connect</button>
+    </form>
+    <p class="err" id="loginErr"></p>
+  </section>
+
+  <!-- MAIN -->
+  <section id="main" hidden>
+    <div class="alert" id="alert" hidden></div>
+
+    <div class="stats">
+      <div><span>CPU</span><b id="cpuTemp">--</b><small id="cpuLoad"></small></div>
+      <div><span>GPU</span><b id="gpuTemp">--</b><small id="gpuLoad"></small></div>
+      <div><span>Fan</span><b id="fan">--</b><small id="fanNote"></small></div>
+    </div>
+
+    <h2>Profile</h2>
+    <div class="chips" id="profiles"></div>
+
+    <h2>Pump screen</h2>
+    <div class="card">
+      <div class="row">
+        <span>Screen</span>
+        <label class="switch"><input type="checkbox" id="screenOn" /><span></span></label>
+      </div>
+      <div class="row col">
+        <span>Brightness <output id="brightVal"></output></span>
+        <input type="range" id="bright" min="0" max="100" step="5" />
+      </div>
+      <div class="row buttons">
+        <button id="night">Night mode</button>
+        <button id="boost">Fan boost</button>
+      </div>
+    </div>
+
+    <div class="np card" id="np" hidden>
+      <div class="np-text"><b id="npTitle"></b><span id="npArtist"></span></div>
+      <div class="np-buttons">
+        <button data-media="previous" aria-label="Previous">&#x23EE;&#xFE0E;</button>
+        <button data-media="play-pause" aria-label="Play or pause">&#x23EF;&#xFE0E;</button>
+        <button data-media="next" aria-label="Next">&#x23ED;&#xFE0E;</button>
+      </div>
+    </div>
+
+    <h2>Video <small id="splitNote" hidden>(split screen is on; picking a video switches to full screen)</small></h2>
+    <div class="media" id="media"></div>
+
+    <p class="foot"><button class="link" id="signOut">Sign out</button></p>
+  </section>
+
+  <script src="/remote.js"></script>
+</body>
+</html>

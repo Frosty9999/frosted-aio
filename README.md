@@ -21,6 +21,14 @@ software is needed or included.
 - **Now Playing:** the song Windows' media controls report (Spotify, browsers and more), as a centred line at
   the top or bottom, with play/pause and skip buttons.
 - **Fan curve:** drag the points, or set a fixed speed.
+- **Profiles:** named setups of screen media, brightness, overlay, Now Playing and fan curve. Each can switch
+  on automatically while a chosen game or program runs, and switches back when it closes.
+- **Temperature alerts:** a Windows notification, fans at 100% and red overlay text when the CPU or GPU stays
+  over your limit.
+- **Keyboard shortcuts:** system-wide keys for screen on/off, next profile, night mode, fan boost, brightness,
+  play/pause and each profile.
+- **Phone remote:** a page for your phone's browser on the home network (scan the QR code, sign in with a
+  6-digit PIN) to switch profiles and videos, change brightness, and toggle night mode and fan boost.
 - **Night mode:** dim or turn off the screen on a schedule or when the PC is idle.
 - **Stats history:** one CSV per day in `Documents\Frosted-AIO\History`, with charts in the app.
 - **Runs quietly:** system tray, start at sign-in, no administrator prompt after install, and in-app updates
@@ -50,6 +58,8 @@ software is needed or included.
 | `src/overlay.js` | Lays out the stats overlay. The same code drives the cooler and the in-app preview. |
 | `src/nowplaying.ps1` | Reads Windows' media controls for Now Playing. |
 | `src/updater.js` | Checks this repo's latest release and installs it. |
+| `src/profiles.js` | Profiles and the running-program check for auto-switching. |
+| `src/remote.js`, `src/remote/` | The phone remote's web server and page. It only answers devices on the local network, and needs the PIN. |
 
 Connecting is three requests: `get_device_info`, `get_sys_config`, then `get_device_auth`, which the cooler
 answers with `"ok"`. Uploads go `file_transmit_begin`, then 256 KB `file_transmit_data` pieces, then
@@ -86,4 +96,5 @@ npm run dist
 MIT, see [LICENSE](LICENSE). Bundled components keep their own licences:
 - FFmpeg: GPL-3.0
 - LibreHardwareMonitor: MPL-2.0
+- qrcode-generator: MIT
 - Roboto and Orbitron fonts: OFL-1.1

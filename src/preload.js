@@ -29,5 +29,16 @@ contextBridge.exposeInMainWorld('kanali', {
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onStats: (cb) => ipcRenderer.on('stats', (_e, s) => cb(s)),
   onMedia: (cb) => ipcRenderer.on('media', (_e, m) => cb(m)),
-  onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s))
+  onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),
+  activateProfile: (id) => ipcRenderer.invoke('profile:activate', id),
+  createProfile: (name) => ipcRenderer.invoke('profile:create', name),
+  deleteProfile: (id) => ipcRenderer.invoke('profile:delete', id),
+  runningPrograms: () => ipcRenderer.invoke('profile:programs'),
+  pickProgram: () => ipcRenderer.invoke('profile:pickExe'),
+  hotkeyStatus: () => ipcRenderer.invoke('hotkeys:status'),
+  pauseHotkeys: (paused) => ipcRenderer.invoke('hotkeys:pause', paused),
+  onHotkeys: (cb) => ipcRenderer.on('hotkeys', (_e, failed) => cb(failed)),
+  remoteInfo: () => ipcRenderer.invoke('remote:info'),
+  remoteNewPin: () => ipcRenderer.invoke('remote:newPin'),
+  onRemote: (cb) => ipcRenderer.on('remote', (_e, r) => cb(r))
 });

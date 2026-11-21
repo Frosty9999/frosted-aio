@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, powerMonitor, dialog, Tray, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, dialog, Tray, Menu, shell, globalShortcut, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile, spawn } = require('child_process');
@@ -9,6 +9,8 @@ const Overlay = require('./overlay');
 const { StatsHistory } = require('./history');
 const updater = require('./updater');
 const system = require('./system');
+const Profiles = require('./profiles');
+const { RemoteServer, lanAddresses, newPin } = require('./remote');
 const { ensureElevated, isElevated, log: launchLog } = require('./elevate');
 
 // --ui-test (development only): the full app with a throwaway settings folder and no cooler connection,
@@ -96,6 +98,18 @@ const DEFAULTS = {
   history: { enabled: true, interval: 5, keepDays: 0 },
   // Updates: check GitHub Releases shortly after start and every 12 hours.
   updates: { auto: true },
+  // Profiles (see profiles.js): snapshots of screen/overlay/fan settings. Edits save into the active one.
+  profiles: [],
+  activeProfile: '',
+  autoSwitch: true, // switch profiles when one of their programs is running
+  autoFrom: '', // the profile to go back to when the program that switched us closes
+  profileToasts: true, // Windows notification when a program or hotkey switches profile
+  // Temperature alerts: after `seconds` at or over the limit (°C); clears 5 °C below it.
+  alerts: { enabled: true, cpu: 95, gpu: 88, seconds: 5, notify: true, fanBoost: true, redText: true },
+  // Global keyboard shortcuts (Electron accelerators, '' = off). Profile shortcuts live on each profile.
+  hotkeys: { toggleScreen: '', nextProfile: '', toggleNight: '', fanBoost: '', brightnessUp: '', brightnessDown: '', playPause: '' },
+  // Phone remote: web page on the home network, signed in with a 6-digit PIN.
+  remote: { enabled: false, port: 8457, pin: '' },
   closeToTray: true,
   fan: {
     mode: 'Smart Mode',
@@ -143,11 +157,17 @@ function loadSettings() {
   settings = { ...DEFAULTS };
   for (const k of Object.keys(DEFAULTS)) if (k in saved) settings[k] = saved[k];
   // Grouped settings: fill in any options added since the file was saved.
-  for (const k of ['badges', 'overlayStyle', 'night', 'history', 'fan', 'nowPlaying', 'updates']) settings[k] = { ...DEFAULTS[k], ...(saved[k] || {}) };
+  for (const k of ['badges', 'overlayStyle', 'night', 'history', 'fan', 'nowPlaying', 'updates', 'alerts', 'hotkeys', 'remote']) settings[k] = { ...DEFAULTS[k], ...(saved[k] || {}) };
   settings.media = firstFileName(settings.media);
   settings.splitLeft = firstFileName(settings.splitLeft);
   settings.splitRight = firstFileName(settings.splitRight);
   if (!['single', 'dual'].includes(settings.layout)) settings.layout = 'single';
+  // First start with profiles: today's settings become the "Default" profile.
+  settings.profiles = Profiles.normalize(settings.profiles, settings);
+  if (!settings.profiles.some((p) => p.id === settings.activeProfile)) settings.activeProfile = settings.profiles[0].id;
+  if (!/^\d{6}$/.test(settings.remote.pin)) settings.remote.pin = newPin();
+  const port = Number(settings.remote.port);
+  settings.remote.port = Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : DEFAULTS.remote.port;
   log('loaded settings from', settingsFile(), 'keys=', Object.keys(saved).length, 'saved.media=', saved.media, 'media=', settings.media);
 }
 
@@ -264,8 +284,12 @@ function mediaCommand(cmd) {
   spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', npScript(), '-Command', cmd], { windowsHide: true });
 }
 
+// During a temperature alert (with "red text" on) the overlay is drawn in red.
+const ALERT_COLOR = '#ff4d4d';
+const overlaySettings = () => (alertActive().length && settings.alerts.redText ? { ...settings, textColor: ALERT_COLOR } : settings);
+
 function runConfig() {
-  const labelGroups = Overlay.groups(settings, overlayStats(), overlayCtx());
+  const labelGroups = Overlay.groups(overlaySettings(), overlayStats(), overlayCtx());
   labelGroups.push(...badgeGroups());
   return { labelGroups };
 }
@@ -353,7 +377,9 @@ function curveAt(points, t) {
 function applyFan(force = false) {
   if (!bridge?.device) return;
   let p;
-  if (settings.fan.mode === 'Fixed Mode') {
+  if (fanBoost || (settings.alerts.fanBoost && alertActive().length)) {
+    p = 100; // fan boost (hotkey/tray/phone) or a temperature alert
+  } else if (settings.fan.mode === 'Fixed Mode') {
     p = settings.fan.fixedMode;
   } else {
     // No reading yet: leave the cooler on whatever it was doing rather than drive it from 0 °C.
@@ -442,6 +468,9 @@ async function tick() {
       bridge.updateLabels(labelUpdates());
     }
     bridge.requestCoolerStatus();
+  }
+  checkAlerts();
+  if (bridge?.device) {
     applyFan();
     applyNight();
   }
@@ -451,10 +480,63 @@ async function tick() {
     const removed = history.prune(settings.history.keepDays);
     if (removed.length) log('history: removed old days', removed);
   }
-  win?.webContents.send('stats', { ...stats, fanPower: lastFanPower, night: nightState(), nowPlaying });
+  win?.webContents.send('stats', liveStats());
 }
 
+const liveStats = () => ({ ...stats, fanPower: lastFanPower, night: nightState(), nowPlaying, alerts: alertActive(), fanBoost });
+
 let lastLayoutKey = null;
+
+// ---------- temperature alerts ----------
+// A sensor is "in alert" after settings.alerts.seconds at or over its limit, and leaves it 5 °C below.
+// While any alert is on: a Windows notification (at most every 5 minutes per sensor), fans at 100% and
+// red overlay text, each optional.
+
+const alertState = { cpu: { over: 0, active: false, notified: 0 }, gpu: { over: 0, active: false, notified: 0 } };
+const alertActive = () => Object.keys(alertState).filter((k) => alertState[k].active).map((k) => k.toUpperCase());
+
+function checkAlerts() {
+  const a = settings.alerts;
+  const before = alertActive().join();
+  for (const kind of ['cpu', 'gpu']) {
+    const s = alertState[kind];
+    const limit = Number(a[kind]) || 0;
+    const t = stats[kind].temperature;
+    if (!a.enabled || !limit || !haveTemp || !(t > 0)) {
+      s.over = 0;
+      s.active = false;
+      continue;
+    }
+    s.over = t >= limit ? s.over + 1 : 0;
+    if (!s.active && s.over >= Math.max(1, a.seconds)) {
+      s.active = true;
+      log(`alert: ${kind} at ${t} °C (limit ${limit})`);
+      if (a.notify && Date.now() - s.notified > 5 * 60 * 1000) {
+        s.notified = Date.now();
+        const shown = settings.unit === 'Fahrenheit' ? `${Math.round(t * 1.8 + 32)} °F` : `${Math.round(t)} °C`;
+        toast(`${kind.toUpperCase()} is at ${shown}`, `That's over your ${kind.toUpperCase()} alert limit.${a.fanBoost ? ' Fans are at full speed until it cools down.' : ''}`);
+      }
+    } else if (s.active && t < limit - 5) {
+      s.active = false;
+      log(`alert: ${kind} back to ${t} °C`);
+    }
+  }
+  if (alertActive().join() !== before && bridge?.device) {
+    bridge.setRunConfig(runConfig()); // red text on/off
+    applyFan(true);
+  }
+}
+
+function toast(title, body, { silent = false } = {}) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title, body, silent, icon: path.join(__dirname, 'assets', 'icon-256.png') });
+    n.on('click', showWindow);
+    n.show();
+  } catch (e) {
+    log('notification failed:', e.message);
+  }
+}
 
 const historyDir = () => path.join(app.getPath('documents'), 'Frosted-AIO', 'History');
 
@@ -481,7 +563,25 @@ const toMinutes = (hhmm) => {
   return (h || 0) * 60 + (m || 0);
 };
 
+// Night mode toggled by hotkey, tray or phone: 'on' forces it on, 'off' cancels it until the schedule/idle
+// rule that turned it on ends, null follows the rules.
+let nightOverride = null;
+let fanBoost = false;
+
 function nightState() {
+  const base = nightRules();
+  if (nightOverride === 'off') {
+    if (!base.active) nightOverride = null;
+    else return { active: false, reasons: [], overridden: true, brightness: settings.brightness };
+  }
+  if (nightOverride === 'on') {
+    const brightness = Math.min(base.brightness, settings.night.brightness, settings.brightness);
+    return { active: true, reasons: [...base.reasons, 'manual'], brightness };
+  }
+  return base;
+}
+
+function nightRules() {
   const n = settings.night;
   const reasons = [];
   let level = Infinity;
@@ -511,6 +611,7 @@ function applyNight() {
   if (b === sentBrightness || !screenReady()) return;
   log('night mode:', nightState().active ? `dimming to ${b}%` : `back to ${b}%`);
   bridge.setUserConfig(userConfig());
+  buildTrayMenu(); // the tray's "Night mode" tick
 }
 
 // ---------- connection ----------
@@ -826,16 +927,17 @@ function buildTrayMenu() {
         : []),
       { type: 'separator' },
       {
-        label: 'Pump screen on',
-        type: 'checkbox',
-        checked: settings.screenOn,
-        click: (item) => {
-          settings.screenOn = item.checked;
-          saveSettings();
-          if (bridge?.device) appliers.screen();
-          win?.webContents.send('settings', settings);
-        }
+        label: 'Profile',
+        submenu: settings.profiles.map((p) => ({
+          label: p.name.replace(/&/g, '&&'),
+          type: 'radio',
+          checked: p.id === settings.activeProfile,
+          click: () => activateProfile(p.id, 'manual')
+        }))
       },
+      { label: 'Pump screen on', type: 'checkbox', checked: settings.screenOn, click: (item) => actions.screen(item.checked) },
+      { label: 'Night mode', type: 'checkbox', checked: nightState().active, click: () => actions.toggleNight() },
+      { label: 'Fan boost (100%)', type: 'checkbox', checked: fanBoost, click: (item) => actions.fanBoost(item.checked) },
       { type: 'separator' },
       { label: 'Quit', click: quitApp }
     ])
@@ -866,6 +968,16 @@ ipcMain.handle('media:delete', (_e, fileName) => {
   if (settings.splitLeft === fileName) (settings.splitLeft = ''), (changed = true);
   if (settings.splitRight === fileName) (settings.splitRight = ''), (changed = true);
   if (settings.layout === 'dual' && !settings.splitLeft && !settings.splitRight) (settings.layout = 'single'), (changed = true);
+  // Other profiles may use it too: point them at the same fallback.
+  for (const p of settings.profiles) {
+    const d = p.data;
+    if (d.media === fileName) d.media = fullFallback;
+    if (d.splitLeft === fileName) d.splitLeft = '';
+    if (d.splitRight === fileName) d.splitRight = '';
+    if (d.layout === 'dual' && !d.splitLeft && !d.splitRight) d.layout = 'single';
+    if (p.id === settings.activeProfile) Object.assign(d, { media: settings.media, splitLeft: settings.splitLeft, splitRight: settings.splitRight, layout: settings.layout });
+  }
+  saveSettings();
   if (changed) {
     saveSettings();
     bridge.setUserConfig(userConfig());
@@ -920,15 +1032,294 @@ ipcMain.handle('system:kanaliAutostart', async (_e, on) => {
 });
 
 ipcMain.handle('settings:get', () => settings);
-ipcMain.handle('settings:set', (_e, section, patch) => {
+ipcMain.handle('settings:set', (_e, section, patch) => changeSettings(section, patch));
+
+// The one place settings change: from the window, the tray, hotkeys and the phone.
+// notify: also tell the window (it already knows when it made the change itself).
+function changeSettings(section, patch, { notify = false } = {}) {
+  if (section === 'profiles' && patch.profiles) {
+    // The window may rename, reorder and edit program lists; each profile's saved settings stay as they are here.
+    const byId = new Map(settings.profiles.map((p) => [p.id, p]));
+    const merged = patch.profiles.filter((p) => byId.has(p?.id)).map((p) => ({ ...p, data: byId.get(p.id).data }));
+    patch = { ...patch, profiles: Profiles.normalize(merged, settings) };
+  }
+  if (section === 'remote' && patch.remote) {
+    const port = Number(patch.remote.port);
+    patch = { ...patch, remote: { ...settings.remote, enabled: !!patch.remote.enabled, port: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : settings.remote.port } };
+  }
   settings = { ...settings, ...patch };
   settings.media = firstFileName(settings.media);
+  // Profile settings are saved into the active profile as well.
+  const active = settings.profiles.find((p) => p.id === settings.activeProfile);
+  if (active) for (const k of Object.keys(patch)) if (Profiles.PROFILE_KEYS.includes(k)) active.data[k] = Profiles.clone(settings[k]);
   saveSettings();
   if (section === 'nowPlaying') applyNowPlayingSetting();
   else if (section === 'updates') scheduleUpdateChecks();
+  else if (section === 'alerts') checkAlerts();
+  else if (section === 'hotkeys' || section === 'profiles') registerHotkeys();
+  else if (section === 'remote') applyRemote();
+  else if (section === 'night' && bridge?.device) applyNight();
   else if (bridge?.device && appliers[section]) appliers[section]();
+  if (section === 'profiles') scheduleAutoSwitch();
+  buildTrayMenu();
+  if (notify) win?.webContents.send('settings', settings);
+  return settings;
+}
+
+// ---------- profiles ----------
+
+// how: 'manual' (window/tray/phone), 'hotkey', 'auto' (a program started), 'auto-end' (it closed)
+function activateProfile(id, how = 'manual') {
+  const p = settings.profiles.find((x) => x.id === id);
+  if (!p) throw new Error('That profile no longer exists.');
+  if (how === 'manual' || how === 'hotkey') {
+    // Picked by hand while a program's profile is on: stay on this one until that program closes.
+    if (autoMatchId) autoSuppressed = autoMatchId;
+    settings.autoFrom = '';
+  }
+  if (settings.activeProfile === id) {
+    saveSettings();
+    return settings;
+  }
+  const prevNp = settings.nowPlaying?.enabled;
+  settings = { ...settings, ...Profiles.clone(p.data), activeProfile: id };
+  saveSettings();
+  log(`profile: ${p.name} (${how})`);
+  if (bridge?.device) {
+    appliers.screen();
+    appliers.overlay();
+    applyFan(true);
+  }
+  if (settings.nowPlaying?.enabled !== prevNp) applyNowPlayingSetting();
+  win?.webContents.send('settings', settings);
+  buildTrayMenu();
+  if (settings.profileToasts && how !== 'manual') {
+    const why = how === 'auto' ? 'A program on its list started.' : how === 'auto-end' ? 'The program that switched it closed.' : 'Keyboard shortcut.';
+    toast(`Profile: ${p.name}`, why, { silent: true });
+  }
+  return settings;
+}
+
+function nextProfile() {
+  const list = settings.profiles;
+  const i = list.findIndex((p) => p.id === settings.activeProfile);
+  return activateProfile(list[(i + 1) % list.length].id, 'hotkey');
+}
+
+// Auto-switch: every 4 seconds, look for a running program from any profile's list.
+let autoTimer = null;
+let autoMatchId = null; // the profile whose program is running now
+let autoSuppressed = null; // ...but the user picked another profile by hand while it ran
+let autoBusy = false;
+
+function scheduleAutoSwitch() {
+  const needed = settings.autoSwitch && (settings.profiles.some((p) => p.apps.length) || settings.autoFrom);
+  if (needed && !autoTimer) {
+    autoTimer = setInterval(checkAutoSwitch, 4000);
+    checkAutoSwitch();
+  } else if (!needed && autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+}
+
+async function checkAutoSwitch() {
+  if (autoBusy || !settings.autoSwitch) return;
+  autoBusy = true;
+  try {
+    const running = await Profiles.runningPrograms();
+    if (!running) return;
+    const match = Profiles.autoMatch(settings.profiles, running);
+    autoMatchId = match?.id || null;
+    if (autoSuppressed && autoSuppressed !== autoMatchId) autoSuppressed = null;
+    if (match && match.id !== autoSuppressed) {
+      if (settings.activeProfile !== match.id) {
+        if (!settings.autoFrom) settings.autoFrom = settings.activeProfile;
+        activateProfile(match.id, 'auto');
+      }
+    } else if (!match && settings.autoFrom) {
+      const back = settings.autoFrom;
+      settings.autoFrom = '';
+      if (settings.profiles.some((p) => p.id === back) && back !== settings.activeProfile) activateProfile(back, 'auto-end');
+      else saveSettings();
+    }
+  } catch (e) {
+    log('auto-switch failed:', e.message);
+  } finally {
+    autoBusy = false;
+  }
+}
+
+ipcMain.handle('profile:activate', (_e, id) => activateProfile(id, 'manual'));
+ipcMain.handle('profile:create', (_e, name) => {
+  const p = Profiles.makeProfile(name || `Profile ${settings.profiles.length + 1}`, settings);
+  settings.profiles = [...settings.profiles, p];
+  saveSettings();
+  activateProfile(p.id, 'manual');
   buildTrayMenu();
   return settings;
+});
+ipcMain.handle('profile:delete', (_e, id) => {
+  if (settings.profiles.length <= 1) throw new Error("You can't delete the last profile.");
+  const list = settings.profiles.filter((p) => p.id !== id);
+  if (settings.activeProfile === id) activateProfile(list[0].id, 'manual');
+  if (settings.autoFrom === id) settings.autoFrom = '';
+  return changeSettings('profiles', { profiles: list });
+});
+ipcMain.handle('profile:programs', () => Profiles.windowedPrograms());
+ipcMain.handle('profile:pickExe', async () => {
+  const pick = await dialog.showOpenDialog(win, { title: 'Choose a game or program', properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe'] }] });
+  return pick.canceled ? null : Profiles.normApp(pick.filePaths[0]);
+});
+
+// ---------- actions (tray, hotkeys, phone) ----------
+
+const clampPct = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+
+const actions = {
+  toggleScreen: () => changeSettings('screen', { screenOn: !settings.screenOn }, { notify: true }),
+  screen: (on) => changeSettings('screen', { screenOn: !!on }, { notify: true }),
+  brightness: (v) => changeSettings('screen', { brightness: clampPct(v) }, { notify: true }),
+  brightnessUp: () => actions.brightness(settings.brightness + 10),
+  brightnessDown: () => actions.brightness(settings.brightness - 10),
+  nextProfile: () => nextProfile(),
+  profile: (id) => activateProfile(String(id), 'manual'),
+  toggleNight: () => {
+    nightOverride = nightState().active ? 'off' : 'on';
+    log('night mode toggled:', nightOverride);
+    if (bridge?.device) applyNight();
+    buildTrayMenu();
+  },
+  fanBoost: (on) => {
+    fanBoost = typeof on === 'boolean' ? on : !fanBoost;
+    log('fan boost:', fanBoost);
+    applyFan(true);
+    buildTrayMenu();
+  },
+  playPause: () => mediaCommand('play-pause'),
+  media: (cmd) => mediaCommand(cmd),
+  show: (fileName) => {
+    const m = deviceMedia.find((x) => x.fileName === fileName && !x.half);
+    if (!m) throw new Error('That video is no longer on the cooler.');
+    return changeSettings('screen', { media: m.fileName, layout: 'single' }, { notify: true });
+  }
+};
+
+// ---------- global hotkeys ----------
+
+const HOTKEY_ACTIONS = ['toggleScreen', 'nextProfile', 'toggleNight', 'fanBoost', 'brightnessUp', 'brightnessDown', 'playPause'];
+let hotkeyFailed = []; // keys of shortcuts Windows wouldn't give us (in use by another program, or a duplicate)
+let hotkeysPaused = false;
+
+function registerHotkeys() {
+  globalShortcut.unregisterAll();
+  hotkeyFailed = [];
+  if (hotkeysPaused) return;
+  const used = new Set();
+  const add = (key, accel, fn) => {
+    if (!accel) return;
+    const norm = accel.toLowerCase();
+    let ok = false;
+    try {
+      ok = !used.has(norm) && globalShortcut.register(accel, () => {
+        try {
+          fn();
+        } catch (e) {
+          log('hotkey action failed:', key, e.message);
+        }
+      });
+    } catch {
+      ok = false;
+    }
+    used.add(norm);
+    if (!ok) hotkeyFailed.push(key);
+  };
+  for (const a of HOTKEY_ACTIONS) add(a, settings.hotkeys[a], () => actions[a]());
+  for (const p of settings.profiles) add(`profile:${p.id}`, p.hotkey, () => activateProfile(p.id, 'hotkey'));
+  if (hotkeyFailed.length) log('hotkeys not available:', hotkeyFailed);
+  win?.webContents.send('hotkeys', hotkeyFailed);
+}
+
+ipcMain.handle('hotkeys:status', () => hotkeyFailed);
+// While the window records a new shortcut, our own shortcuts are switched off so the keys reach it.
+ipcMain.handle('hotkeys:pause', (_e, paused) => {
+  hotkeysPaused = !!paused;
+  registerHotkeys();
+  return hotkeyFailed;
+});
+
+// ---------- phone remote ----------
+
+const remote = new RemoteServer({
+  log,
+  host: uiTest ? '127.0.0.1' : '0.0.0.0', // UI tests stay on this PC (no firewall prompt)
+  getState: () => remoteState(),
+  thumbFile: (fileName) => (deviceMedia.some((m) => m.fileName === fileName) ? thumbFor(fileName) : null),
+  act: (action, value) => {
+    const ok = ['screen', 'brightness', 'profile', 'toggleNight', 'night', 'fanBoost', 'media', 'show'];
+    if (!ok.includes(action)) throw new Error('Unknown action.');
+    log('remote action:', action, value ?? '');
+    if (action === 'night') return actions.toggleNight();
+    if (action === 'media' && !['play-pause', 'next', 'previous'].includes(value)) throw new Error('Unknown media command.');
+    return actions[action](value);
+  }
+});
+let remoteError = null;
+
+function remoteState() {
+  const t = (c) => (settings.unit === 'Fahrenheit' ? Math.round(c * 1.8 + 32) : Math.round(c));
+  return {
+    connected: status.status === 'connected',
+    device: status.device ? `Panorama ${status.device.productName === 'PASE' ? 'SE' : status.device.productName}` : '',
+    stats: {
+      cpuTemp: t(stats.cpu.temperature), cpuTempC: stats.cpu.temperature, cpuLoad: stats.cpu.load,
+      gpuTemp: t(stats.gpu.temperature), gpuTempC: stats.gpu.temperature, gpuLoad: stats.gpu.load,
+      fanPower: lastFanPower, pump: stats.cooler.pumpSpeed, unit: settings.unit === 'Fahrenheit' ? '°F' : '°C'
+    },
+    screenOn: settings.screenOn,
+    brightness: settings.brightness,
+    night: { active: nightState().active },
+    fanBoost,
+    alerts: alertActive(),
+    profiles: settings.profiles.map((p) => ({ id: p.id, name: p.name })),
+    activeProfile: settings.activeProfile,
+    layout: settings.layout,
+    current: settings.media,
+    media: deviceMedia.filter((m) => !m.half).map((m) => ({ fileName: m.fileName, name: m.fileName.replace(/\.h264_\d+x\d+$/, '').replace(/\.(mp4|mov|gif|png|jpg|mkv|webm)$/i, ''), thumb: !!m.thumb })),
+    nowPlaying: nowPlaying.title ? { title: nowPlaying.title, artist: nowPlaying.artist || '', playing: !!nowPlaying.playing } : {}
+  };
+}
+
+async function applyRemote() {
+  const r = settings.remote;
+  remoteError = r.enabled ? await remote.start(r.port, r.pin) : (await remote.stop(), null);
+  win?.webContents.send('remote', remoteInfo());
+}
+
+function remoteInfo() {
+  const r = settings.remote;
+  const urls = lanAddresses().map((ip) => `http://${ip}:${r.port}`);
+  let qr = '';
+  if (r.enabled && urls.length) {
+    try {
+      const qrcode = require('qrcode-generator');
+      const q = qrcode(0, 'M');
+      q.addData(`${urls[0]}/#pin=${r.pin}`);
+      q.make();
+      qr = q.createDataURL(5, 2);
+    } catch (e) {
+      log('QR code failed:', e.message);
+    }
+  }
+  return { enabled: r.enabled, running: remote.running, port: r.port, pin: r.pin, urls, qr, error: remoteError };
+}
+
+ipcMain.handle('remote:info', () => remoteInfo());
+ipcMain.handle('remote:newPin', async () => {
+  settings.remote = { ...settings.remote, pin: newPin() };
+  saveSettings();
+  await applyRemote(); // signs out every phone
+  return remoteInfo();
 });
 ipcMain.handle('device:retry', () => connect());
 ipcMain.handle('media:control', (_e, cmd) => mediaCommand(cmd));
@@ -1012,6 +1403,7 @@ app.on('second-instance', showWindow);
 
 app.whenReady().then(() => {
   if (registering) return; // installer mode: no window, exits when the tasks are written
+  app.setAppUserModelId('io.github.frosty9999.frosted-aio'); // Windows notifications show as Frosted-AIO
   loadSettings();
   log('started', app.isPackaged ? 'installed' : 'development', 'copy:', process.execPath, 'version', app.getVersion());
   migrateHistoryFolder();
@@ -1036,6 +1428,9 @@ app.whenReady().then(() => {
   createTray();
   startNowPlaying();
   scheduleUpdateChecks();
+  registerHotkeys();
+  scheduleAutoSwitch();
+  if (settings.remote.enabled) applyRemote();
   if (uiTest) {
     // Feed the page sample stats every second, like a connected cooler would.
     setInterval(() => {
@@ -1045,7 +1440,10 @@ app.whenReady().then(() => {
         memory: { load: 40, frequency: 6000 },
         network: { down: 1.5e6, up: 2e5 }
       });
-      win?.webContents.send('stats', { ...stats, fanPower: 40, night: nightState(), nowPlaying });
+      if (process.env.FROSTED_HOT) stats.cpu.temperature = Number(process.env.FROSTED_HOT); // try the alerts
+      haveTemp = true;
+      checkAlerts();
+      win?.webContents.send('stats', { ...liveStats(), fanPower: 40 });
     }, 1000);
     return log('UI test mode: not connecting to the cooler');
   }
@@ -1053,8 +1451,11 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => setTimeout(() => connect(), 3000));
 });
 
+app.on('will-quit', () => globalShortcut.unregisterAll());
+
 app.on('before-quit', () => {
   quitting = true;
+  remote.stop();
   stopNowPlaying();
   try {
     disconnect();

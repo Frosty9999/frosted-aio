@@ -125,6 +125,7 @@ api.onStats((st) => {
     showTrack();
   }
   showNight(st.night);
+  showAlerts(st);
 });
 
 // ---------- night mode ----------
@@ -134,8 +135,8 @@ function showNight(n) {
   if (!n) return;
   el.classList.toggle('on', n.active);
   el.textContent = n.active
-    ? `${n.brightness === 0 ? 'Screen off' : `Dimmed to ${n.brightness}%`} (${n.reasons.map((r) => (r === 'idle' ? 'PC idle' : 'schedule')).join(' + ')})`
-    : 'Not active';
+    ? `${n.brightness === 0 ? 'Screen off' : `Dimmed to ${n.brightness}%`} (${n.reasons.map((r) => ({ idle: 'PC idle', manual: 'turned on by you' })[r] || 'schedule').join(' + ')})`
+    : n.overridden ? 'Turned off by you for now' : 'Not active';
 }
 
 function renderNight() {
@@ -1013,6 +1014,397 @@ async function loadSystem() {
 
 $('standby').onchange = (e) => save('screen', { standby: e.target.checked });
 
+// ---------- title bar: active profile and alerts ----------
+
+function renderTopChips() {
+  const p = (s.profiles || []).find((x) => x.id === s.activeProfile);
+  $('profileChip').hidden = !p || s.profiles.length < 2;
+  $('profileChip').textContent = p ? `Profile: ${p.name}${s.autoFrom ? ' (auto)' : ''}` : '';
+}
+$('profileChip').onclick = () => document.querySelector('.rail [data-view="profiles"]').click();
+
+function showAlerts(st) {
+  const list = st.alerts || [];
+  const chip = $('alertChip');
+  chip.hidden = !list.length;
+  if (list.length) {
+    chip.textContent = list.map((k) => `${k} ${fmtTemp(st[k.toLowerCase()].temperature)}${unitSym()}`).join(' · ') + ' — too hot';
+  }
+  const status = $('alertStatus');
+  status.classList.toggle('alert-on', !!list.length);
+  status.textContent = list.length ? `Alert: ${list.join(' + ')} over the limit` : st.fanBoost ? 'Fan boost on' : 'No alert';
+}
+
+// ---------- temperature alerts ----------
+
+// Limits are stored in °C and shown in the chosen unit.
+const toShown = (c) => (s.unit === 'Fahrenheit' ? Math.round(c * 1.8 + 32) : c);
+const fromShown = (v) => (s.unit === 'Fahrenheit' ? Math.round((v - 32) / 1.8) : Math.round(v));
+
+function renderAlerts() {
+  const a = s.alerts;
+  $('alertsOn').checked = a.enabled;
+  document.querySelector('.alerts').classList.toggle('off', !a.enabled);
+  for (const [id, key] of [['alertCpu', 'cpu'], ['alertGpu', 'gpu']]) {
+    if (document.activeElement !== $(id)) $(id).value = toShown(a[key]);
+    $(id).min = toShown(40);
+    $(id).max = toShown(120);
+  }
+  $('alertSeconds').value = String(a.seconds);
+  $('alertNotify').checked = a.notify;
+  $('alertFan').checked = a.fanBoost;
+  $('alertRed').checked = a.redText;
+}
+const saveAlerts = (patch) => save('alerts', { alerts: { ...s.alerts, ...patch } });
+$('alertsOn').onchange = (e) => saveAlerts({ enabled: e.target.checked });
+$('alertNotify').onchange = (e) => saveAlerts({ notify: e.target.checked });
+$('alertFan').onchange = (e) => saveAlerts({ fanBoost: e.target.checked });
+$('alertRed').onchange = (e) => saveAlerts({ redText: e.target.checked });
+$('alertSeconds').onchange = (e) => saveAlerts({ seconds: Number(e.target.value) });
+for (const [id, key] of [['alertCpu', 'cpu'], ['alertGpu', 'gpu']]) {
+  $(id).onchange = (e) => {
+    const c = Math.max(40, Math.min(120, fromShown(Number(e.target.value))));
+    if (!Number.isFinite(c)) return renderAlerts();
+    saveAlerts({ [key]: c });
+  };
+}
+
+// ---------- profiles ----------
+
+function profileSummary(p) {
+  const d = p.data || {};
+  const video = d.layout === 'dual' ? 'Split screen' : d.media ? prettyName(d.media) : 'No video';
+  const stats = Overlay.visibleItems(d.overlay, Overlay.style(d.overlayStyle)).length;
+  const fan = d.fan?.mode === 'Fixed Mode' ? `Fan fixed at ${d.fan.fixedMode}%` : 'Fan curve';
+  return [video, `${d.brightness ?? s.brightness}% brightness`, `${stats} overlay stats`, fan].join(' · ');
+}
+
+const saveProfiles = (list) => save('profiles', { profiles: list });
+
+let lastProfKey = '';
+function renderProfiles(force = false) {
+  $('autoSwitch').checked = s.autoSwitch;
+  $('profileToasts').checked = s.profileToasts;
+  const key = JSON.stringify([s.profiles, s.activeProfile, s.autoFrom]);
+  if (!force && key === lastProfKey) return;
+  const typing = document.activeElement;
+  if (!force && $('profList').contains(typing) && typing.tagName === 'INPUT' && typing.value !== typing.defaultValue) return; // mid-rename
+  lastProfKey = key;
+  $('profList').replaceChildren(...s.profiles.map(profileCard));
+}
+
+function profileCard(p) {
+  const card = document.createElement('div');
+  const active = p.id === s.activeProfile;
+  card.className = 'prof' + (active ? ' on' : '');
+
+  const head = document.createElement('div');
+  head.className = 'prof-head';
+  const name = document.createElement('input');
+  name.className = 'text-in';
+  name.maxLength = 32;
+  name.spellcheck = false;
+  name.defaultValue = p.name;
+  name.onchange = () => {
+    const v = name.value.trim() || p.name;
+    saveProfiles(s.profiles.map((x) => (x.id === p.id ? { ...x, name: v } : x)));
+  };
+  name.onkeydown = (e) => e.key === 'Enter' && name.blur();
+  head.append(name);
+  if (active) {
+    const tag = document.createElement('span');
+    tag.className = 'prof-tag' + (s.autoFrom ? ' auto' : '');
+    tag.textContent = s.autoFrom ? 'Active (switched automatically)' : 'Active';
+    head.append(tag);
+  }
+  const spacer = document.createElement('span');
+  spacer.className = 'spacer';
+  head.append(spacer);
+  if (!active) {
+    const use = document.createElement('button');
+    use.className = 'ghost';
+    use.textContent = 'Use';
+    use.onclick = async () => {
+      s = await api.activateProfile(p.id);
+      render();
+    };
+    head.append(use);
+  }
+  if (s.profiles.length > 1) {
+    const del = document.createElement('button');
+    del.className = 'ghost danger';
+    del.textContent = 'Delete';
+    del.onclick = async () => {
+      if (!confirm(`Delete the profile "${p.name}"?\n\nIts saved settings are removed. Videos stay on the cooler.`)) return;
+      try {
+        s = await api.deleteProfile(p.id);
+        render();
+      } catch (err) {
+        alert(err.message || err);
+      }
+    };
+    head.append(del);
+  }
+  card.append(head);
+
+  const sum = document.createElement('p');
+  sum.className = 'prof-sum';
+  sum.textContent = profileSummary(p);
+  card.append(sum);
+
+  const apps = document.createElement('div');
+  apps.className = 'prof-apps';
+  const lbl = document.createElement('span');
+  lbl.className = 'color-label';
+  lbl.textContent = 'Switch to this while running:';
+  apps.append(lbl);
+  for (const a of p.apps) {
+    const chip = document.createElement('span');
+    chip.className = 'app-chip';
+    chip.append(a);
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.title = `Remove ${a}`;
+    x.onclick = () => saveProfiles(s.profiles.map((y) => (y.id === p.id ? { ...y, apps: y.apps.filter((z) => z !== a) } : y)));
+    chip.append(x);
+    apps.append(chip);
+  }
+  if (!p.apps.length) {
+    const none = document.createElement('span');
+    none.className = 'hint inline';
+    none.textContent = 'no programs';
+    apps.append(none);
+  }
+  const add = document.createElement('button');
+  add.className = 'ghost small';
+  add.textContent = '+ Add program';
+  add.onclick = () => openProgramPicker(p, add);
+  apps.append(add);
+  card.append(apps);
+  return card;
+}
+
+function addProgram(p, exe) {
+  if (!exe) return;
+  const others = s.profiles.find((x) => x.id !== p.id && x.apps.includes(exe));
+  if (others && !confirm(`${exe} already switches to "${others.name}". Move it to "${p.name}"?`)) return renderProfiles(true);
+  saveProfiles(s.profiles.map((x) => (x.id === p.id ? { ...x, apps: [...new Set([...x.apps, exe])] } : { ...x, apps: x.apps.filter((a) => a !== exe) })));
+}
+
+async function openProgramPicker(p, button) {
+  button.disabled = true;
+  button.textContent = 'Looking for open programs…';
+  const list = await api.runningPrograms();
+  const sel = document.createElement('select');
+  const opt = (value, text) => Object.assign(document.createElement('option'), { value, textContent: text });
+  sel.append(opt('', 'Choose an open program…'));
+  for (const prog of list) sel.append(opt(prog.exe, `${prog.exe}  —  ${prog.title}`));
+  sel.append(opt('__browse', 'Browse for a .exe file…'));
+  sel.onchange = async () => {
+    if (sel.value === '__browse') addProgram(p, await api.pickProgram());
+    else addProgram(p, sel.value);
+  };
+  sel.onblur = () => setTimeout(() => sel.isConnected && renderProfiles(true), 200);
+  button.replaceWith(sel);
+  sel.focus();
+}
+
+$('profNew').onclick = async () => {
+  s = await api.createProfile(`Profile ${s.profiles.length + 1}`);
+  render();
+  // Put the cursor in the new profile's name.
+  const inputs = $('profList').querySelectorAll('.prof-head input');
+  inputs[inputs.length - 1]?.select();
+};
+$('autoSwitch').onchange = (e) => save('profiles', { autoSwitch: e.target.checked });
+$('profileToasts').onchange = (e) => save('none', { profileToasts: e.target.checked });
+
+// ---------- keyboard shortcuts ----------
+
+const HOTKEYS = [
+  ['toggleScreen', 'Pump screen on / off'],
+  ['nextProfile', 'Next profile'],
+  ['toggleNight', 'Night mode on / off'],
+  ['fanBoost', 'Fan boost (100%) on / off'],
+  ['brightnessUp', 'Brightness up 10%'],
+  ['brightnessDown', 'Brightness down 10%'],
+  ['playPause', 'Play / pause music']
+];
+let hotkeyFailed = [];
+let recording = null; // key being recorded
+
+const KEY_NAMES = {
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Space: 'Space', Home: 'Home', End: 'End',
+  PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+  Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Backquote: '`',
+  NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult', NumpadDivide: 'numdiv', NumpadDecimal: 'numdec'
+};
+
+// A keydown -> Electron accelerator ("Ctrl+Alt+S"), '' for "not finished yet", null for "not allowed".
+function accelFrom(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  const c = e.code;
+  let key = null;
+  if (/^Key[A-Z]$/.test(c)) key = c.slice(3);
+  else if (/^Digit\d$/.test(c)) key = c.slice(5);
+  else if (/^F([1-9]|1\d|2[0-4])$/.test(c)) key = c;
+  else if (/^Numpad\d$/.test(c)) key = `num${c.slice(6)}`;
+  else key = KEY_NAMES[c] || null;
+  if (!key) return /Control|Alt|Shift|Meta/.test(c) ? '' : null;
+  const fKey = /^F\d+$/.test(key);
+  if (!fKey && !mods.some((m) => m !== 'Shift')) return null; // a plain letter would break typing everywhere
+  return [...mods, key].join('+');
+}
+const showAccel = (a) => a.split('+').join(' + ');
+
+function hotkeyRows() {
+  const rows = HOTKEYS.map(([key, label]) => ({ key, label, accel: s.hotkeys[key] || '' }));
+  for (const p of s.profiles) rows.push({ key: `profile:${p.id}`, label: `Switch to "${p.name}"`, accel: p.hotkey || '' });
+  return rows;
+}
+
+function setHotkey(key, accel) {
+  // One shortcut per action: take it away from anything else using it.
+  const hotkeys = { ...s.hotkeys };
+  for (const k of Object.keys(hotkeys)) if (accel && hotkeys[k] === accel) hotkeys[k] = '';
+  let profiles = s.profiles.map((p) => (accel && p.hotkey === accel ? { ...p, hotkey: '' } : p));
+  if (key.startsWith('profile:')) {
+    const id = key.slice(8);
+    profiles = profiles.map((p) => (p.id === id ? { ...p, hotkey: accel } : p));
+  } else hotkeys[key] = accel;
+  return api.setSettings('hotkeys', { hotkeys }).then(() => api.setSettings('profiles', { profiles }));
+}
+
+let lastHotkeyKey = '';
+function renderHotkeys(force = false) {
+  const rows = hotkeyRows();
+  const key = JSON.stringify([rows, hotkeyFailed, recording]);
+  if (!force && key === lastHotkeyKey) return;
+  lastHotkeyKey = key;
+  $('hotkeyList').replaceChildren(
+    ...rows.map((r) => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      const text = document.createElement('div');
+      const b = document.createElement('b');
+      b.textContent = r.label;
+      text.append(b);
+      const failed = hotkeyFailed.includes(r.key) && r.accel;
+      if (failed) {
+        const p = document.createElement('p');
+        p.className = 'bad';
+        p.textContent = "Windows wouldn't give Frosted-AIO this shortcut. Another program is probably using it; pick a different one.";
+        text.append(p);
+      }
+      const keys = document.createElement('div');
+      keys.className = 'key-row';
+      const btn = document.createElement('button');
+      const rec = recording === r.key;
+      btn.className = 'keybtn' + (rec ? ' rec' : r.accel ? '' : ' empty') + (failed ? ' bad' : '');
+      btn.textContent = rec ? 'Press the keys…' : r.accel ? showAccel(r.accel) : 'Not set';
+      btn.onclick = () => startRecording(r.key);
+      keys.append(btn);
+      if (r.accel && !rec) {
+        const x = document.createElement('button');
+        x.className = 'x';
+        x.textContent = '×';
+        x.title = 'Clear';
+        x.onclick = () => setHotkey(r.key, '').then(refreshSettings);
+        keys.append(x);
+      }
+      item.append(text, keys);
+      return item;
+    })
+  );
+}
+
+async function refreshSettings() {
+  s = await api.getSettings();
+  render();
+}
+
+async function startRecording(key) {
+  if (recording) return;
+  recording = key;
+  renderHotkeys();
+  await api.pauseHotkeys?.(true);
+}
+
+async function stopRecording(accel) {
+  const key = recording;
+  recording = null;
+  if (accel !== undefined) await setHotkey(key, accel);
+  hotkeyFailed = (await api.pauseHotkeys?.(false)) || [];
+  await refreshSettings();
+  renderHotkeys(true);
+}
+
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') return stopRecording();
+    if ((e.code === 'Backspace' || e.code === 'Delete') && !e.ctrlKey && !e.altKey) return stopRecording('');
+    const accel = accelFrom(e);
+    if (accel === '') return; // only modifiers so far
+    if (accel === null) {
+      const btn = $('hotkeyList').querySelector('.keybtn.rec');
+      if (btn) btn.textContent = 'Add Ctrl or Alt (or use an F-key)';
+      return;
+    }
+    stopRecording(accel);
+  },
+  true
+);
+// Clicking elsewhere cancels recording.
+document.addEventListener('mousedown', (e) => recording && !e.target.closest('.keybtn') && stopRecording());
+api.onHotkeys?.((failed) => {
+  hotkeyFailed = failed || [];
+  renderHotkeys();
+});
+
+// ---------- phone remote ----------
+
+let remote = null;
+function renderRemote(info) {
+  remote = info || remote;
+  if (!remote) return;
+  $('remoteOn').checked = remote.enabled;
+  $('remoteCard').hidden = !remote.enabled;
+  if (!remote.enabled) return;
+  $('remoteQr').hidden = !remote.qr;
+  if (remote.qr) $('remoteQr').src = remote.qr;
+  $('remoteUrl').replaceChildren(
+    ...(remote.urls.length ? remote.urls : ['No network connection found']).map((u, i) => {
+      const d = document.createElement('div');
+      d.textContent = i ? `or ${u}` : u;
+      return d;
+    })
+  );
+  $('remotePin').textContent = remote.pin;
+  if (document.activeElement !== $('remotePort')) $('remotePort').value = remote.port;
+  $('remoteErr').hidden = !remote.error;
+  $('remoteErr').textContent = remote.error || '';
+}
+$('remoteOn').onchange = (e) => save('remote', { remote: { ...s.remote, enabled: e.target.checked } });
+$('remotePort').onchange = (e) => save('remote', { remote: { ...s.remote, port: Number(e.target.value) } });
+$('remoteNewPin').onclick = async () => {
+  if (!confirm('Make a new PIN? Every phone that is signed in now will need the new one.')) return;
+  renderRemote(await api.remoteNewPin());
+};
+api.onRemote?.(renderRemote);
+document.querySelector('.rail [data-view="controls"]').addEventListener('click', async () => {
+  renderRemote(await api.remoteInfo?.());
+  hotkeyFailed = (await api.hotkeyStatus?.()) || [];
+  renderHotkeys(true);
+});
+
 // ---------- render ----------
 
 function render() {
@@ -1035,6 +1427,10 @@ function render() {
   $('updAuto').checked = s.updates?.auto !== false;
   renderNight();
   renderHistoryControls();
+  renderAlerts();
+  renderProfiles();
+  renderHotkeys();
+  renderTopChips();
   drawCurve();
 }
 
@@ -1065,7 +1461,15 @@ function createMock() {
     customText: 'My PC',
     night: { schedule: true, start: '22:00', end: '07:00', brightness: 15, idle: false, idleMinutes: 10, idleBrightness: 10 },
     history: { enabled: true, interval: 5, keepDays: 0 },
-    nowPlaying: { enabled: true, placement: 'top', artist: true, time: true, hideWhenPaused: true, scroll: false }
+    nowPlaying: { enabled: true, placement: 'top', artist: true, time: true, hideWhenPaused: true, scroll: false },
+    alerts: { enabled: true, cpu: 95, gpu: 88, seconds: 5, notify: true, fanBoost: true, redText: true },
+    hotkeys: { toggleScreen: 'Ctrl+Alt+S', nextProfile: 'Ctrl+Alt+P', toggleNight: '', fanBoost: 'Ctrl+Alt+F', brightnessUp: '', brightnessDown: '', playPause: '' },
+    remote: { enabled: true, port: 8457, pin: '482913' },
+    autoSwitch: true, autoFrom: '', profileToasts: true, activeProfile: 'a1b2c3d4',
+    profiles: [
+      { id: 'a1b2c3d4', name: 'Default', apps: [], hotkey: '', data: { media: 'sample-a.mp4.h264_2240x1080', layout: 'single', brightness: 70, overlay: ['CPU Temperature', 'GPU Temperature'], fan: { mode: 'Smart Mode' } } },
+      { id: 'e5f6a7b8', name: 'Gaming', apps: ['cs2.exe', 'eldenring.exe'], hotkey: 'Ctrl+Alt+G', data: { media: 'default_01.mp4.h264_2240x1080', layout: 'single', brightness: 100, overlay: ['GPU Temperature', 'GPU Usage', 'GPU Power', 'CPU Temperature'], fan: { mode: 'Fixed Mode', fixedMode: 80 } } }
+    ]
   };
   const h = { stats: [], status: [] };
   let t = 0;
@@ -1118,6 +1522,12 @@ function createMock() {
     historyOpen: async () => '',
     addMedia: async () => null,
     deleteMedia: async () => settings,
+    activateProfile: async (id) => (settings = { ...settings, activeProfile: id }),
+    createProfile: async () => settings,
+    deleteProfile: async () => settings,
+    runningPrograms: async () => [{ exe: 'spotify.exe', title: 'Spotify Premium' }, { exe: 'cs2.exe', title: 'Counter-Strike 2' }],
+    pickProgram: async () => null,
+    remoteInfo: async () => ({ enabled: true, running: true, port: 8457, pin: '482913', urls: ['http://192.168.1.20:8457'], qr: '', error: null }),
     onStatus: (cb) => h.status.push(cb),
     onStats: (cb) => h.stats.push(cb),
     onMedia: () => {},
