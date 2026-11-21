@@ -1,0 +1,400 @@
+// usb_protocol.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.USBProtocol;
+import "lv_gui.proto";
+import "user_config.proto";
+import "sys_config.proto";
+import "cooler.proto";
+import "touch_display.proto";
+import "media_header.proto";
+
+message HeaderPb {
+  uint32 version = 1;
+  uint64 track_id = 2;
+  uint32 payload_crc32 = 3;
+}
+
+message PingPb {
+  bytes payload = 1;
+}
+
+message PongPb {
+  bytes payload = 1;
+}
+
+message RawMsgPb {
+  bytes payload = 1;
+}
+
+message DummyMsgPb {
+  string dummy = 1;
+}
+
+message GetDeviceAuthPb {
+  uint32 key = 1;
+}
+
+message DeviceInfoPb {
+  string os_name = 1;
+  string os_version = 2;
+  string firmware_version = 3;
+  string product_name = 4;
+  string app_version = 5;
+  string serial_number = 8;
+  bool serial_number_locked = 9;
+  string chip_id = 10;
+}
+
+message DeviceAuthPb {
+  string auth = 1;
+}
+
+message StorageStatusPb {
+  Tryx.Config.StoragePb.enStorageType storage_type = 1;
+  uint64 available_bytes = 2;
+  bool abnormal = 3;
+  string error_message = 4;
+}
+
+message AppExceptionPb {
+  enum enExceptionType {
+    ExceptionUnknown = 0;
+    ExceptionStorage = 1;
+    ExceptionConfig = 2;
+    ExceptionPeripheral = 3;
+    ExceptionSystem = 4;
+  }
+  Tryx.USBProtocol.AppExceptionPb.enExceptionType exception_type = 1;
+  int32 error_code = 2;
+  string source = 3;
+  string message = 4;
+  int64 timestamp = 5;
+}
+
+message MediaThumbnailSetPb {
+  string media_file_name = 1;
+  bytes thumbnail_data = 2;
+}
+
+message MediaThumbnailGetPb {
+  string media_file_name = 1;
+}
+
+message MediaThumbnailGetResultPb {
+  string media_file_name = 1;
+  bool has_thumbnail = 2;
+  bytes thumbnail_data = 3;
+}
+
+message FileTransmitBeginPb {
+  bytes file_name = 1;
+  uint32 file_size = 2;
+}
+
+message FileTransmitDataPb {
+  bytes file_data = 1;
+}
+
+message FileTransmitEndPb {
+  bytes file_type = 1;
+  uint32 CRC = 2;
+}
+
+message MediaPushBeginPb {
+  Tryx.Media.enPayloadFormat payload_format = 1;
+  uint32 frame_rate = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+}
+
+message MediaPushDataPb {
+  bytes media_data = 1;
+}
+
+message MediaPushEndPb {
+}
+
+message FilePullRequestPb {
+  bytes file_name = 1;
+  uint64 session_id = 2;
+  uint64 file_offset = 3;
+}
+
+message FilePullResponsePb {
+  enum enFilePullStatus {
+    OK = 0;
+    FileError = 1;
+  }
+  Tryx.USBProtocol.FilePullResponsePb.enFilePullStatus status = 1;
+  bytes file_name = 2;
+  uint64 session_id = 3;
+  uint64 file_offset = 4;
+  uint64 file_size = 5;
+  bytes file_data = 6;
+}
+
+message FileTransmitStatusPb {
+  enum enFileTransStatus {
+    OK = 0;
+    SpaceNotEnough = 1;
+    FileError = 2;
+    CRCFail = 3;
+  }
+  Tryx.USBProtocol.FileTransmitStatusPb.enFileTransStatus file_trans_status = 1;
+}
+
+message FileRemovePb {
+  string file_name = 1;
+  string file_type = 2;
+}
+
+message FileDecryptJobStartPb {
+  string enc_file_name = 1;
+  string dec_file_name = 2;
+  string file_type = 3;
+  string encrypted_sm4_key = 4;
+}
+
+message FileDecryptJobStartStatusPb {
+  enum DecryptJobStartStatus {
+    Accepted = 0;
+    Busy = 1;
+    CreateFailed = 2;
+    InvalidParams = 3;
+  }
+  Tryx.USBProtocol.FileDecryptJobStartStatusPb.DecryptJobStartStatus start_status = 1;
+  uint64 session_id = 2;
+  string message = 3;
+}
+
+message FileDecryptJobQueryPb {
+  uint64 session_id = 1;
+}
+
+message FileDecryptJobStatusPb {
+  enum enDecryptJobStatus {
+    Finished = 0;
+    NotFound = 1;
+    Running = 2;
+  }
+  enum enDecryptStatus {
+    DecryptSuccess = 0;
+    Base64DecodeFailed = 1;
+    RSADecryptFailed = 2;
+    SM4DecryptFailed = 3;
+    KeyFileNotFound = 4;
+    FileNotFound = 5;
+  }
+  Tryx.USBProtocol.FileDecryptJobStatusPb.enDecryptJobStatus job_status = 1;
+  uint32 progress = 2;
+  Tryx.USBProtocol.FileDecryptJobStatusPb.enDecryptStatus decrypt_status = 3;
+  string message = 4;
+  string output_path = 5;
+}
+
+message SysCtlExecPb {
+  enum enCommand {
+    None = 0;
+    InstallApp = 1;
+    Reboot = 2;
+    RestoreConfig = 3;
+    RestoreDevice = 4;
+    Console = 5;
+    Reset = 6;
+  }
+  Tryx.USBProtocol.SysCtlExecPb.enCommand cmd = 1;
+  string params = 2;
+}
+
+message SysCtlExecRespPb {
+  enum enExecStatus {
+    Success = 0;
+    Running = 1;
+    Failed = 2;
+    InvalidCmd = 3;
+  }
+  Tryx.USBProtocol.SysCtlExecRespPb.enExecStatus exec_status = 1;
+  string log = 2;
+}
+
+message SysCtlInitSerialNumberPb {
+  string serial_number = 1;
+}
+
+message SysCtlInitSerialNumberRespPb {
+  enum enInitSNStatus {
+    SN_Success = 0;
+    SN_Length_Invalid = 1;
+    SN_Locked = 2;
+  }
+  string serial_number = 1;
+  Tryx.USBProtocol.SysCtlInitSerialNumberRespPb.enInitSNStatus status = 2;
+}
+
+message HostCtlSetVolumePb {
+  bool mute = 1;
+  int32 volume = 2;
+}
+
+message QuickLauncherSlotItemPb {
+  string program_path = 1;
+  bytes png_icon = 2;
+}
+
+message TouchSlotWritePb {
+  Tryx.TouchDisplay.TouchSlotPb.ComponentType component = 1;
+  repeated Tryx.USBProtocol.QuickLauncherSlotItemPb quick_launcher_items = 2;
+}
+
+message TouchSlotAddPb {
+  uint32 slot_index = 1;
+  Tryx.USBProtocol.TouchSlotWritePb slot = 2;
+}
+
+message TouchSlotRemovePb {
+  uint32 slot_index = 1;
+}
+
+message TouchSlotUpdatePb {
+  uint32 slot_index = 1;
+  Tryx.USBProtocol.TouchSlotWritePb slot = 2;
+}
+
+message TouchSlotSetActivePb {
+  uint32 slot_index = 1;
+}
+
+message TouchSlotSwapPb {
+  uint32 first_slot_index = 1;
+  uint32 second_slot_index = 2;
+}
+
+message TouchSlotQueryAllPb {
+}
+
+message TouchSlotResultPb {
+}
+
+message QuickLauncherShortcutLaunchPb {
+  uint32 slot_index = 1;
+  string program_path = 2;
+}
+
+message FactoryTestUSBTransferDataPb {
+  int64 begin_timestamp = 1;
+  int64 package_timestamp = 2;
+  int64 total_count = 3;
+  int64 package_seq = 4;
+  bool echo = 5;
+  bytes package_data = 6;
+}
+
+message DebugModePb {
+  enum enDebugType {
+    show_device_info = 0;
+    show_sys_config = 1;
+    show_file_list = 2;
+    show_user_config = 3;
+    show_run_config = 4;
+    show_system_status = 5;
+    show_label_groups = 6;
+  }
+  bool debug_enable = 1;
+  bool pretty_text = 2;
+  repeated Tryx.USBProtocol.DebugModePb.enDebugType debug_type_list = 10;
+}
+
+message TestDataPb {
+  bool play_finished = 1;
+}
+
+message ErrorPb {
+  enum enError {
+    Success = 0;
+    Fail = 1;
+    BodyCaseNotSupported = 2;
+  }
+  Tryx.USBProtocol.ErrorPb.enError code = 1;
+  string why = 2;
+}
+
+message ReqPackagePb {
+  Tryx.USBProtocol.HeaderPb header = 1;
+  oneof body {
+    Tryx.USBProtocol.PingPb ping = 10;
+    Tryx.USBProtocol.RawMsgPb raw_msg = 12;
+    Tryx.USBProtocol.DummyMsgPb get_device_info = 100;
+    Tryx.USBProtocol.GetDeviceAuthPb get_device_auth = 101;
+    Tryx.USBProtocol.DummyMsgPb get_sys_config = 102;
+    Tryx.USBProtocol.DummyMsgPb get_file_list = 103;
+    Tryx.USBProtocol.DummyMsgPb get_user_config = 104;
+    Tryx.USBProtocol.DummyMsgPb get_run_config = 105;
+    Tryx.USBProtocol.DummyMsgPb get_cooler_config = 106;
+    Tryx.USBProtocol.DummyMsgPb get_cooler_status = 107;
+    Tryx.USBProtocol.TouchSlotQueryAllPb touch_slot_query_all = 108;
+    Tryx.USBProtocol.MediaThumbnailGetPb get_media_thumbnail = 109;
+    Tryx.USBProtocol.DummyMsgPb get_storage_status = 110;
+    Tryx.Config.UserConfigPb user_config = 200;
+    Tryx.Config.RunConfigPb run_config = 201;
+    Tryx.Cooler.CoolerConfigPb cooler_config = 202;
+    Tryx.USBProtocol.MediaThumbnailSetPb set_media_thumbnail = 203;
+    Tryx.USBProtocol.TouchSlotAddPb touch_slot_add = 206;
+    Tryx.USBProtocol.TouchSlotRemovePb touch_slot_remove = 207;
+    Tryx.USBProtocol.TouchSlotUpdatePb touch_slot_update = 208;
+    Tryx.USBProtocol.TouchSlotSetActivePb touch_slot_set_active = 209;
+    Tryx.USBProtocol.TouchSlotSwapPb touch_slot_swap = 210;
+    Tryx.LVGui.BatchGroupLabelUpdatePb batch_group_label_update = 300;
+    Tryx.LVGui.LabelGroupPb label_group_create = 301;
+    Tryx.LVGui.LabelGroupPb label_group_destroy = 302;
+    Tryx.USBProtocol.FileTransmitBeginPb file_transmit_begin = 400;
+    Tryx.USBProtocol.FileTransmitDataPb file_transmit_data = 401;
+    Tryx.USBProtocol.FileTransmitEndPb file_transmit_end = 402;
+    Tryx.USBProtocol.FileRemovePb file_remove = 403;
+    Tryx.USBProtocol.FileDecryptJobStartPb file_decrypt_job_start = 404;
+    Tryx.USBProtocol.FileDecryptJobQueryPb file_decrypt_job_query = 405;
+    Tryx.USBProtocol.FilePullRequestPb file_pull_request = 406;
+    Tryx.USBProtocol.MediaPushBeginPb media_push_begin = 407;
+    Tryx.USBProtocol.MediaPushDataPb media_push_data = 408;
+    Tryx.USBProtocol.MediaPushEndPb media_push_end = 409;
+    Tryx.USBProtocol.HostCtlSetVolumePb host_ctl_set_volume = 420;
+    Tryx.USBProtocol.SysCtlExecPb sys_ctl_exec = 450;
+    Tryx.USBProtocol.SysCtlInitSerialNumberPb sys_ctl_init_serial_number = 451;
+    Tryx.USBProtocol.FactoryTestUSBTransferDataPb factory_test_usb_transfer_data = 900;
+    Tryx.USBProtocol.DebugModePb debug_mode = 999;
+  }
+}
+
+message RspPackagePb {
+  Tryx.USBProtocol.HeaderPb header = 1;
+  Tryx.USBProtocol.ErrorPb error = 2;
+  oneof body {
+    Tryx.USBProtocol.PongPb pong = 10;
+    Tryx.USBProtocol.DeviceInfoPb device_info = 500;
+    Tryx.USBProtocol.DeviceAuthPb device_auth = 501;
+    Tryx.Config.SysConfigPb sys_config = 502;
+    Tryx.Config.FileListPb file_list = 503;
+    Tryx.Config.UserConfigPb user_config = 504;
+    Tryx.Config.RunConfigPb run_config = 505;
+    Tryx.Cooler.CoolerConfigPb cooler_config = 506;
+    Tryx.Cooler.CoolerStatusPb cooler_status = 507;
+    Tryx.TouchDisplay.TouchDisplayConfigPb touch_slot_query_all_result = 508;
+    Tryx.USBProtocol.MediaThumbnailGetResultPb media_thumbnail = 509;
+    Tryx.USBProtocol.StorageStatusPb storage_status = 510;
+    Tryx.USBProtocol.DummyMsgPb dummy_msg = 600;
+    Tryx.USBProtocol.TouchSlotResultPb touch_slot_result = 601;
+    Tryx.USBProtocol.FileTransmitStatusPb file_transmit_begin_status = 800;
+    Tryx.USBProtocol.FileTransmitStatusPb file_transmit_data_status = 801;
+    Tryx.USBProtocol.FileTransmitStatusPb file_transmit_end_status = 802;
+    Tryx.USBProtocol.FileDecryptJobStartStatusPb file_decrypt_job_start_status = 803;
+    Tryx.USBProtocol.FileDecryptJobStatusPb file_decrypt_job_status = 804;
+    Tryx.USBProtocol.FilePullResponsePb file_pull_response = 805;
+    Tryx.USBProtocol.HostCtlSetVolumePb host_ctl_volume_setted = 820;
+    Tryx.USBProtocol.QuickLauncherShortcutLaunchPb quick_launcher_shortcut_launch = 821;
+    Tryx.USBProtocol.AppExceptionPb app_exception = 822;
+    Tryx.USBProtocol.SysCtlExecRespPb sys_ctl_exec_resp = 850;
+    Tryx.USBProtocol.SysCtlInitSerialNumberRespPb sys_ctl_init_serial_number_resp = 851;
+    Tryx.USBProtocol.FactoryTestUSBTransferDataPb factory_test_usb_transfer_data = 900;
+    Tryx.USBProtocol.TestDataPb test_data = 987;
+  }
+}
+

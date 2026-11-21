@@ -1,0 +1,186 @@
+// sys_config.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.Config;
+
+message VDecParamPb {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+message VPSSParamPb {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+message VOParamPb {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 rotation = 3;
+  bool mirror = 4;
+}
+
+message UIParamPb {
+  uint32 rotation = 1;
+  bool flip = 2;
+}
+
+message I2CInterfacePb {
+  enum enI2CBus {
+    I2C_BUS_0 = 0;
+    I2C_BUS_1 = 1;
+    I2C_BUS_2 = 2;
+    I2C_BUS_3 = 3;
+    I2C_BUS_4 = 4;
+  }
+  Tryx.Config.I2CInterfacePb.enI2CBus i2c_bus = 1;
+  int32 slave_addr = 2;
+}
+
+message PeripheralI2CParamPb {
+  enum enI2CBus {
+    I2C_BUS_0 = 0;
+    I2C_BUS_1 = 1;
+    I2C_BUS_2 = 2;
+    I2C_BUS_3 = 3;
+    I2C_BUS_4 = 4;
+  }
+  Tryx.Config.PeripheralI2CParamPb.enI2CBus i2c_bus = 1;
+  int32 slave_addr = 2;
+}
+
+message PeripheralPwmParamPb {
+  string chip_path = 1;
+  uint32 channel = 2;
+  uint32 period = 3;
+  bool enable = 4;
+  uint32 duty_percent = 5;
+}
+
+message PeripheralUartParamPb {
+  string dev = 1;
+  uint32 baudrate = 2;
+}
+
+message CommonPeripheralPb {
+  enum enPeripheralType {
+    PeripheralNone = 0;
+    PeripheralI2C = 1;
+    PeripheralPwm = 2;
+    PeripheralUart = 3;
+  }
+  Tryx.Config.CommonPeripheralPb.enPeripheralType peripheral_type = 1;
+  oneof peripheral_param {
+    Tryx.Config.PeripheralI2CParamPb i2c_param = 11;
+    Tryx.Config.PeripheralPwmParamPb pwm_param = 12;
+    Tryx.Config.PeripheralUartParamPb uart_param = 13;
+  }
+}
+
+message RGBAmbientLightPb {
+  string name = 1;
+  bool enable = 2;
+  Tryx.Config.I2CInterfacePb i2c = 3;
+  uint32 max_brightness = 4;
+}
+
+message StoragePb {
+  enum enStorageType {
+    EMMC = 0;
+    TFCard = 1;
+  }
+  Tryx.Config.StoragePb.enStorageType storage_type = 1;
+  string mount_base = 2;
+  string data_folder = 3;
+}
+
+message OLEDParamPb {
+  enum enBrightnessCmdType {
+    BrightnessCmd2Byte = 0;
+    BrightnessCmd1Byte = 1;
+  }
+  Tryx.Config.OLEDParamPb.enBrightnessCmdType brightness_cmd_type = 1;
+}
+
+message ScreenPb {
+  enum enScreenType {
+    LCD = 0;
+    OLED = 1;
+  }
+  Tryx.Config.ScreenPb.enScreenType screen_type = 1;
+  Tryx.Config.OLEDParamPb oled_param = 2;
+}
+
+message CoolerPb {
+  enum enFunType {
+    NoFun = 0;
+    PwmFun = 1;
+  }
+  enum enPumpType {
+    NoPump = 0;
+    I2CPump = 1;
+  }
+  Tryx.Config.CommonPeripheralPb fan_control = 1;
+  Tryx.Config.CommonPeripheralPb fan_status = 2;
+  Tryx.Config.CommonPeripheralPb pump_control = 3;
+}
+
+message TouchPb {
+  bool enable = 1;
+  string input_dev = 2;
+}
+
+message UartPb {
+  bool enable = 1;
+  Tryx.Config.PeripheralUartParamPb uart_param = 2;
+}
+
+message GPIOPb {
+  enum enFunction {
+    GPIOFunNone = 0;
+    GPIOFunLightI2CSelect = 1;
+  }
+  Tryx.Config.GPIOPb.enFunction function = 1;
+  bool enable = 2;
+  uint32 gpio = 3;
+  bool active_high = 4;
+}
+
+message BoardParamPb {
+  Tryx.Config.StoragePb storage = 1;
+  Tryx.Config.ScreenPb screen = 2;
+  Tryx.Config.CoolerPb cooler = 3;
+  Tryx.Config.TouchPb touch = 4;
+  Tryx.Config.UartPb uart = 5;
+  repeated Tryx.Config.GPIOPb gpio = 6;
+  Tryx.Config.RGBAmbientLightPb rgb_ambient_light = 10;
+}
+
+message CoreParamPb {
+  bool usb_auto_keepalive = 1;
+}
+
+message VideoPipelinePb {
+  enum enMode {
+    VideoPipeline_SoftwareSend = 0;
+    VideoPipeline_HardwareBind = 1;
+  }
+  Tryx.Config.VideoPipelinePb.enMode mode = 1;
+}
+
+message SysConfigPb {
+  string product_name = 1;
+  Tryx.Config.VideoPipelinePb video_pipeline = 5;
+  Tryx.Config.BoardParamPb board_param = 9;
+  Tryx.Config.VDecParamPb vdec_param = 10;
+  Tryx.Config.VPSSParamPb vpss_param = 11;
+  Tryx.Config.VOParamPb vo_param = 12;
+  Tryx.Config.UIParamPb ui_param = 13;
+  Tryx.Config.CoreParamPb core_param = 14;
+}
+
+message SysRuntimeConfigPb {
+  string serial_number = 1;
+  bool serial_number_locked = 2;
+  string chip_id = 3;
+}
+

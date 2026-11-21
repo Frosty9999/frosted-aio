@@ -1,0 +1,116 @@
+// user_config.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.Config;
+import "lv_gui.proto";
+
+message MediaFilePb {
+  string file_path = 1;
+  string file_ext = 2;
+  uint32 file_size = 3;
+  bool read_only = 4;
+}
+
+message PowerOnConfigPb {
+  string media_file = 1;
+}
+
+message StandbyConfigPb {
+  bool enable = 1;
+  string media_file = 2;
+}
+
+message DisplayConfigPb {
+  bool backlight_enable = 1;
+  uint32 backlight_brightness = 2;
+  bool mirror = 3;
+  uint32 ui_rotation = 4;
+  uint32 media_rotation = 5;
+}
+
+message RgbColor {
+  uint32 r = 1;
+  uint32 g = 2;
+  uint32 b = 3;
+}
+
+message LightConfigPb {
+  enum RgbLightEffect {
+    RGBLightEffect_BatteryFlow = 0;
+    RGBLightEffect_Flow = 1;
+    RGBLightEffect_Neon = 2;
+    RGBLightEffect_Solid = 3;
+    RGBLightEffect_Breath = 4;
+    RGBLightEffect_Indicator = 5;
+    RGBLightEffect_Off = 6;
+  }
+  enum enControlMode {
+    LightControlMode_I2C = 0;
+    LightControlMode_ARGBSync = 1;
+  }
+  bool enable = 1;
+  uint32 brightness = 2;
+  Tryx.Config.LightConfigPb.RgbLightEffect effect = 3;
+  Tryx.Config.RgbColor color = 4;
+  uint32 speed = 5;
+  Tryx.Config.LightConfigPb.enControlMode control_mode = 10;
+}
+
+message WorkConfigPb {
+  enum enMediaMode {
+    MediaMode_Single = 0;
+    MediaMode_Dual = 1;
+    MediaMode_Kaleidoscope = 2;
+  }
+  enum enLoopMode {
+    LoopMode_Single = 0;
+    LoopMode_MediaAll = 1;
+    LoopMode_MediaRand = 2;
+    LoopMode_PresetAll = 3;
+    LoopMode_PresetRand = 4;
+  }
+  enum enKaleidoscopeSource {
+    KaleidoscopeSource_Left = 0;
+    KaleidoscopeSource_Right = 1;
+  }
+  Tryx.Config.WorkConfigPb.enMediaMode media_mode = 1;
+  Tryx.Config.WorkConfigPb.enLoopMode loop_mode = 2;
+  string single_mode_media_file = 3;
+  string dual_mode_left_media_file = 4;
+  string dual_mode_right_media_file = 5;
+  string kaleidoscope_media_file = 6;
+  Tryx.Config.WorkConfigPb.enKaleidoscopeSource kaleidoscope_source = 7;
+}
+
+message FilterConfigPb {
+  enum enFilterMode {
+    FilterMode_Single = 0;
+    FilterMode_Dual = 1;
+  }
+  bool enable = 1;
+  string filter_file = 2;
+  uint32 alpha = 3;
+  string dual_mode_left_file = 4;
+  string dual_mode_right_file = 5;
+  uint32 dual_mode_left_alpha = 6;
+  uint32 dual_mode_right_alpha = 7;
+  Tryx.Config.FilterConfigPb.enFilterMode filter_mode = 8;
+}
+
+message UserConfigPb {
+  Tryx.Config.PowerOnConfigPb poweron_config = 1;
+  Tryx.Config.StandbyConfigPb standby_config = 2;
+  Tryx.Config.WorkConfigPb work_config = 3;
+  Tryx.Config.FilterConfigPb filter_config = 4;
+  Tryx.Config.DisplayConfigPb display_config = 5;
+  Tryx.Config.LightConfigPb light_config = 6;
+}
+
+message FileListPb {
+  repeated Tryx.Config.MediaFilePb media_file_list = 1;
+  repeated Tryx.Config.MediaFilePb preset_file_list = 2;
+}
+
+message RunConfigPb {
+  repeated Tryx.LVGui.LabelGroupPb label_groups = 1;
+}
+

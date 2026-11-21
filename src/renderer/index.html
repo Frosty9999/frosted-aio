@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' file: data:; media-src 'self' file:; style-src 'self'; script-src 'self'" />
+  <title>Frosted-AIO</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <span class="brand"><span class="dot"></span>Frosted-AIO</span>
+    <span class="conn" id="conn" data-state="idle"><i></i><span id="connText">Starting…</span></span>
+  </header>
+
+  <div class="shell">
+    <nav class="rail" id="rail">
+      <button class="active" data-view="overview">Overview</button>
+      <button data-view="screen">Screen</button>
+      <button data-view="cooling">Cooling</button>
+      <button data-view="history">History</button>
+      <button data-view="settings">Settings</button>
+    </nav>
+
+    <main>
+      <div class="banner" id="banner" hidden>
+        <span id="bannerText"></span>
+        <button class="ghost" id="retry">Retry</button>
+      </div>
+
+      <!-- OVERVIEW -->
+      <section class="view active" id="view-overview">
+        <div class="hero">
+          <article class="readout">
+            <h3>CPU</h3>
+            <div class="big"><span id="cpuTemp">--</span><sup class="unit">°C</sup></div>
+            <canvas class="spark" id="cpuSpark" width="400" height="56"></canvas>
+            <dl>
+              <div><dt>Load</dt><dd id="cpuLoad">--</dd></div>
+              <div><dt>Clock</dt><dd id="cpuClock">--</dd></div>
+              <div><dt>Power</dt><dd id="cpuPower">--</dd></div>
+            </dl>
+          </article>
+          <article class="readout">
+            <h3>GPU</h3>
+            <div class="big"><span id="gpuTemp">--</span><sup class="unit">°C</sup></div>
+            <canvas class="spark" id="gpuSpark" width="400" height="56"></canvas>
+            <dl>
+              <div><dt>Load</dt><dd id="gpuLoad">--</dd></div>
+              <div><dt>Clock</dt><dd id="gpuClock">--</dd></div>
+              <div><dt>Power</dt><dd id="gpuPower">--</dd></div>
+            </dl>
+          </article>
+        </div>
+        <div class="strip">
+          <div><span>Memory</span><b id="memLoad">--</b></div>
+          <div><span>Pump</span><b id="pumpRpm">--</b></div>
+          <div><span>Fan</span><b id="fanRpm">--</b></div>
+          <div><span>Device</span><b id="devName">--</b></div>
+        </div>
+      </section>
+
+      <!-- SCREEN -->
+      <section class="view" id="view-screen">
+        <div class="row-head">
+          <h2>Pump screen</h2>
+          <label class="switch"><input type="checkbox" id="screenOn" /><span></span></label>
+        </div>
+
+        <div class="field">
+          <label for="brightness">Brightness <output id="brightnessVal"></output></label>
+          <input type="range" id="brightness" min="0" max="100" step="1" />
+        </div>
+
+        <div class="night card">
+          <div class="night-head">
+            <b>Night mode</b>
+            <span class="night-status" id="nightStatus">Off</span>
+          </div>
+          <div class="night-grid">
+            <div class="night-rule">
+              <label class="check"><input type="checkbox" id="nightSchedule" /><span>Dim on a schedule</span></label>
+              <div class="night-inputs">
+                <input type="time" id="nightStart" /> <span class="hint inline">to</span> <input type="time" id="nightEnd" />
+              </div>
+              <div class="field compact">
+                <label for="nightBrightness">Brightness <output id="nightBrightnessVal"></output></label>
+                <input type="range" id="nightBrightness" min="0" max="100" step="1" />
+              </div>
+            </div>
+            <div class="night-rule">
+              <label class="check"><input type="checkbox" id="nightIdle" /><span>Dim when the PC is idle</span></label>
+              <div class="night-inputs">
+                <span class="hint inline">after</span>
+                <select id="nightIdleMinutes">
+                  <option value="2">2 minutes</option>
+                  <option value="5">5 minutes</option>
+                  <option value="10">10 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                </select>
+              </div>
+              <div class="field compact">
+                <label for="nightIdleBrightness">Brightness <output id="nightIdleBrightnessVal"></output></label>
+                <input type="range" id="nightIdleBrightness" min="0" max="100" step="1" />
+              </div>
+            </div>
+          </div>
+          <p class="hint">0% turns the pump screen off. Your normal brightness comes back automatically.</p>
+        </div>
+
+        <div class="row-head section">
+          <h4>Layout</h4>
+          <div class="seg" id="layout">
+            <button data-v="single">Full screen</button>
+            <button data-v="dual">Split screen</button>
+          </div>
+        </div>
+
+        <div class="upload" id="upload" hidden>
+          <div class="upload-text"><span id="uploadLabel">Converting…</span><span id="uploadPct">0%</span></div>
+          <div class="progress"><i id="uploadBar"></i></div>
+        </div>
+
+        <div id="fullBlock">
+          <div class="row-head sub">
+            <p class="hint">Videos stored on your cooler. Click one to play it. New videos are cropped to fill the screen.</p>
+            <button class="ghost" id="addVideo">+ Add video</button>
+          </div>
+          <div class="media" id="media"><p class="hint">Waiting for the cooler…</p></div>
+        </div>
+
+        <div id="splitBlock" hidden>
+          <div class="split" id="split">
+            <div class="side" data-side="left">
+              <div class="slot"></div>
+              <div class="side-bar"><b>Left</b><button class="ghost" data-upload="left">+ Upload</button></div>
+            </div>
+            <div class="side" data-side="right">
+              <div class="slot"></div>
+              <div class="side-bar"><b>Right</b><button class="ghost" data-upload="right">+ Upload</button></div>
+            </div>
+          </div>
+          <p class="hint">Each side takes an image, GIF or video, cropped to fill its half. Select a side above, then click an item below to put it there.</p>
+          <div class="media half" id="halfMedia"></div>
+        </div>
+
+        <h4>Stats overlay</h4>
+        <div class="overlay-editor">
+          <div class="overlay-main">
+            <div class="overlay-preview" id="overlayPreview"></div>
+            <div class="color-row">
+              <span class="color-label">Text color</span>
+              <div class="swatches" id="swatches"></div>
+              <label class="custom-swatch" id="customSwatch" title="Pick any color">
+                <input type="color" id="customColor" />
+              </label>
+              <input type="text" class="hex" id="hexColor" maxlength="7" spellcheck="false" aria-label="Hex color" />
+            </div>
+            <div class="style-grid">
+              <div class="style-cell">
+                <span class="color-label">Layout</span>
+                <div class="seg" id="ovPreset">
+                  <button data-v="columns">Two columns</button>
+                  <button data-v="left">Left</button>
+                  <button data-v="right">Right</button>
+                  <button data-v="row">Bottom row</button>
+                </div>
+              </div>
+              <div class="style-cell">
+                <span class="color-label">Font</span>
+                <div class="seg" id="ovFont">
+                  <button data-v="roboto-regular" class="f-roboto">Roboto</button>
+                  <button data-v="orbitron-regular" class="f-orbitron">Orbitron</button>
+                </div>
+              </div>
+              <div class="style-cell grow">
+                <span class="color-label">Size <output id="ovSizeVal"></output></span>
+                <input type="range" id="ovSize" min="60" max="140" step="5" />
+              </div>
+              <div class="style-cell">
+                <label class="check"><input type="checkbox" id="ovTitles" /><span>Show labels</span></label>
+              </div>
+              <div class="style-cell grow" id="customTextCell" hidden>
+                <span class="color-label">Custom text</span>
+                <input type="text" class="text-in" id="customText" maxlength="24" spellcheck="false" placeholder="e.g. My PC" />
+              </div>
+            </div>
+
+            <div class="np-card">
+              <div class="np-row">
+                <span class="color-label">Now playing</span>
+                <label class="switch small"><input type="checkbox" id="npEnabled" /><span></span></label>
+                <div class="seg" id="npPlacement">
+                  <button data-v="top">Top line</button>
+                  <button data-v="bottom">Bottom line</button>
+                </div>
+                <div class="np-checks" id="npChecks">
+                  <label class="check"><input type="checkbox" id="npArtist" /><span>Artist</span></label>
+                  <label class="check"><input type="checkbox" id="npTime" /><span>Time</span></label>
+                  <label class="check"><input type="checkbox" id="npHide" /><span>Hide if paused</span></label>
+                  <label class="check"><input type="checkbox" id="npScroll" /><span>Scroll long titles</span></label>
+                </div>
+              </div>
+              <div class="np-now" id="npBlock">
+                <span class="np-note">&#x266B;</span>
+                <div class="np-track"><b id="npTitle">Nothing playing</b><span id="npSub">Play music in Spotify, a browser or any media app.</span></div>
+                <div class="np-controls">
+                  <button class="ghost icon" data-media="previous" title="Previous" aria-label="Previous">
+                    <svg viewBox="0 0 16 16"><rect x="3" y="3" width="2" height="10" rx="0.5" /><path d="M13 3.5v9a.5.5 0 0 1-.78.42L6 8.42a.5.5 0 0 1 0-.84l6.22-4.5A.5.5 0 0 1 13 3.5z" /></svg>
+                  </button>
+                  <button class="ghost icon" data-media="play-pause" title="Play or pause" aria-label="Play or pause">
+                    <svg viewBox="0 0 16 16"><path d="M2.5 3.5v9a.5.5 0 0 0 .78.42l6.22-4.5a.5.5 0 0 0 0-.84L3.28 3.08a.5.5 0 0 0-.78.42z" /><rect x="10.5" y="3.5" width="1.6" height="9" rx="0.5" /><rect x="13.2" y="3.5" width="1.6" height="9" rx="0.5" /></svg>
+                  </button>
+                  <button class="ghost icon" data-media="next" title="Next" aria-label="Next">
+                    <svg viewBox="0 0 16 16"><path d="M3 3.5v9a.5.5 0 0 0 .78.42L10 8.42a.5.5 0 0 0 0-.84L3.78 3.08A.5.5 0 0 0 3 3.5z" /><rect x="11" y="3" width="2" height="10" rx="0.5" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="overlay-picker">
+            <div class="picker-head">
+              <span>Stats to show</span>
+              <span class="hint inline" id="overlayCount">0 / 8</span>
+            </div>
+            <div class="stat-list" id="overlay"></div>
+            <p class="hint" id="overlayHint">Picked in order: L1–L4 fill the left column, R1–R4 the right.</p>
+            <div class="picker-head badges-head"><span>Hardware badges</span></div>
+            <div class="stat-list single">
+              <button id="badgeCpu" title=""><span class="n">CPU</span><span class="label" id="badgeCpuName">CPU badge</span></button>
+              <button id="badgeGpu" title=""><span class="n">GPU</span><span class="label" id="badgeGpuName">GPU badge</span></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- COOLING -->
+      <section class="view" id="view-cooling">
+        <div class="row-head">
+          <h2>Fan curve</h2>
+          <div class="seg" id="fanMode">
+            <button data-v="Smart Mode">Curve</button>
+            <button data-v="Fixed Mode">Fixed</button>
+          </div>
+        </div>
+        <div id="curveBlock">
+          <p class="hint">Drag the points. Horizontal is temperature, vertical is fan speed.</p>
+          <svg id="curve" viewBox="0 0 640 300" preserveAspectRatio="none"></svg>
+          <div class="presetline">
+            <button class="ghost" data-curve="quiet">Quiet</button>
+            <button class="ghost" data-curve="balanced">Balanced</button>
+            <button class="ghost" data-curve="performance">Performance</button>
+          </div>
+        </div>
+        <div id="fixedBlock" class="field">
+          <label for="fixed">Fixed speed <output id="fixedVal"></output></label>
+          <input type="range" id="fixed" min="10" max="100" step="5" />
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section class="view" id="view-history">
+        <div class="row-head">
+          <h2>History</h2>
+          <div class="hist-actions">
+            <select id="histDay"></select>
+            <button class="ghost" id="histOpen">Open folder</button>
+          </div>
+        </div>
+        <div class="chips hist-metrics" id="histMetrics"></div>
+        <div class="hist-chart card">
+          <canvas id="histCanvas"></canvas>
+          <div class="hist-tip" id="histTip" hidden></div>
+          <p class="hint hist-empty" id="histEmpty" hidden>No history for this day yet.</p>
+        </div>
+        <div class="hist-summary" id="histSummary"></div>
+
+        <h4>Recording</h4>
+        <div class="list tight">
+          <div class="item">
+            <div><b>Record stats history</b><p id="histPath">Saved as one CSV file per day in Documents\Frosted-AIO\History.</p></div>
+            <label class="switch"><input type="checkbox" id="histEnabled" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Save a sample every</b><p>More often means more detail and bigger files (about 1 MB a day at 5 seconds).</p></div>
+            <select id="histInterval">
+              <option value="1">1 second</option>
+              <option value="5">5 seconds</option>
+              <option value="10">10 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+            </select>
+          </div>
+          <div class="item">
+            <div><b>Keep history for</b><p>Older day files are deleted automatically. Choose Forever to keep everything.</p></div>
+            <select id="histKeep">
+              <option value="0">Forever</option>
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+              <option value="365">1 year</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="view-settings">
+        <h2>Settings</h2>
+        <div class="list">
+          <div class="item">
+            <div><b>Temperature unit</b><p>Used here and on the cooler screen.</p></div>
+            <div class="seg" id="unit">
+              <button data-v="Celsius">°C</button>
+              <button data-v="Fahrenheit">°F</button>
+            </div>
+          </div>
+          <div class="item">
+            <div><b>Standby animation</b><p>Play TRYX's standby video on the cooler while the PC sleeps.</p></div>
+            <label class="switch"><input type="checkbox" id="standby" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Start <u>Frosted-AIO</u> when I sign in</b><p>Opens quietly in the system tray, with no administrator prompt. Keep this on.</p></div>
+            <label class="switch"><input type="checkbox" id="autostart" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Desktop shortcut</b><p id="shortcutHint">Puts a Frosted-AIO icon on your desktop. Double-click it to open the app, with no administrator prompt.</p></div>
+            <button class="ghost" id="createShortcut">Create</button>
+          </div>
+          <div class="item">
+            <div><b>Keep running in the tray when closed</b><p>The stats overlay and fan curve need Frosted-AIO running. Quit from the tray icon.</p></div>
+            <label class="switch"><input type="checkbox" id="closeToTray" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Updates</b><p id="updText">Version <span id="updVersion"></span>.</p></div>
+            <div class="upd-actions">
+              <button class="ghost" id="updPage" hidden>What's new</button>
+              <button class="ghost" id="updBtn">Check now</button>
+            </div>
+          </div>
+          <div class="item">
+            <div><b>Check for updates automatically</b><p>Asks GitHub for a newer release shortly after starting and every 12 hours. Nothing about you or your PC is sent.</p></div>
+            <label class="switch"><input type="checkbox" id="updAuto" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>Quit Frosted-AIO</b><p>Stops the overlay updates and fan curve, and hands the cooler back.</p></div>
+            <button class="ghost" id="quitApp">Quit</button>
+          </div>
+        </div>
+
+        <h4>TRYX KANALI (the original app, if still installed)</h4>
+        <div class="list tight">
+          <div class="item" id="kanaliRow" hidden>
+            <div><b>Allow the original <u>KANALI</u> app to start at boot</b><p id="kanaliHint">Turn this off, or KANALI takes the cooler before Frosted-AIO can. Nothing is deleted; you can turn it back on anytime.</p></div>
+            <label class="switch"><input type="checkbox" id="kanaliAutostart" /><span></span></label>
+          </div>
+          <div class="item">
+            <div><b>TRYX services</b><p>Built into Frosted-AIO, so the original KANALI app isn't needed and can be uninstalled.</p></div>
+            <span class="hint inline">Included</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../overlay.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

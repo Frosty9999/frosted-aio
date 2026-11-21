@@ -1,0 +1,30 @@
+// touch_display.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.TouchDisplay;
+
+message QuickLauncherShortcutPb {
+  string program_path = 1;
+  string icon_resource_path = 2;
+}
+
+message QuickLauncherConfigPb {
+  repeated Tryx.TouchDisplay.QuickLauncherShortcutPb shortcuts = 1;
+}
+
+message TouchSlotPb {
+  enum ComponentType {
+    Component_None = 0;
+    Component_Volume = 1;
+    Component_Brightness = 2;
+    Component_Media = 3;
+    Component_QuickLauncher = 4;
+  }
+  Tryx.TouchDisplay.TouchSlotPb.ComponentType component = 1;
+  Tryx.TouchDisplay.QuickLauncherConfigPb quick_launcher = 2;
+}
+
+message TouchDisplayConfigPb {
+  repeated Tryx.TouchDisplay.TouchSlotPb slots = 1;
+  uint32 active_slot = 2;
+}
+

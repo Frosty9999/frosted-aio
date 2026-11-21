@@ -1,0 +1,29 @@
+// media_header.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.Media;
+
+enum enOriginalMediaType {
+  OriginalMediaType_Unknown = 0;
+  OriginalMediaType_JPEG = 1;
+  OriginalMediaType_PNG = 2;
+  OriginalMediaType_GIF = 3;
+  OriginalMediaType_MP4 = 4;
+}
+
+enum enPayloadFormat {
+  PayloadFormat_Unknown = 0;
+  PayloadFormat_H264Raw = 1;
+  PayloadFormat_MJPEGRaw = 2;
+}
+
+message MediaHeaderPb {
+  uint32 magic = 1;
+  string description = 2;
+  Tryx.Media.enOriginalMediaType original_media_type = 3;
+  Tryx.Media.enPayloadFormat payload_format = 4;
+  uint32 frame_rate = 5;
+  uint32 width = 6;
+  uint32 height = 7;
+  uint64 total_frame_count = 8;
+}
+

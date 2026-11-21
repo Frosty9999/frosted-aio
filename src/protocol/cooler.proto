@@ -1,0 +1,33 @@
+// cooler.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.Cooler;
+
+message FunPowerLevelPb {
+  uint32 temperature = 1;
+  uint32 power = 2;
+}
+
+message FunConfigPb {
+  enum enFunMode {
+    SmartMode = 0;
+    FixMode = 1;
+  }
+  Tryx.Cooler.FunConfigPb.enFunMode mode = 1;
+  repeated Tryx.Cooler.FunPowerLevelPb fun_power_level = 2;
+  uint32 fix_power = 3;
+}
+
+message PumpConfigPb {
+  uint32 speed_percent = 1;
+}
+
+message CoolerConfigPb {
+  Tryx.Cooler.FunConfigPb fan_config = 1;
+  Tryx.Cooler.PumpConfigPb pump_config = 2;
+}
+
+message CoolerStatusPb {
+  uint32 fans_speed = 1;
+  uint32 pump_speed = 2;
+}
+

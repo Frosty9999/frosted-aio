@@ -1,0 +1,55 @@
+// lv_gui.proto (recovered from UDB.exe)
+syntax = "proto3";
+package Tryx.LVGui;
+
+message LabelPb {
+  enum enBackground {
+    BackGround_None = 0;
+    BackGround_Color = 1;
+    BackGround_GardientVertical = 2;
+    BackGround_GardientHorizontal = 3;
+  }
+  uint32 label_id = 1;
+  uint32 line = 2;
+  uint32 order = 3;
+  sint32 gap_left = 4;
+  Tryx.LVGui.LabelPb.enBackground background = 5;
+  uint32 background_color = 6;
+  uint32 gradient_color = 7;
+  string text_font = 8;
+  uint32 text_size = 9;
+  uint32 text_color = 10;
+  string text = 11;
+}
+
+message LabelGroupPb {
+  enum enTextAlign {
+    Auto = 0;
+    Left = 1;
+    Center = 2;
+    Right = 3;
+  }
+  uint32 group_id = 1;
+  uint32 group_x = 2;
+  uint32 group_y = 3;
+  uint32 group_width = 4;
+  uint32 group_height = 5;
+  Tryx.LVGui.LabelGroupPb.enTextAlign text_align = 6;
+  sint32 line_gap = 7;
+  repeated Tryx.LVGui.LabelPb labels = 8;
+}
+
+message LabelTextUpdatePb {
+  uint32 label_id = 1;
+  string text = 2;
+}
+
+message GroupLabelUpdatePb {
+  uint32 group_id = 1;
+  repeated Tryx.LVGui.LabelTextUpdatePb label_texts = 2;
+}
+
+message BatchGroupLabelUpdatePb {
+  repeated Tryx.LVGui.GroupLabelUpdatePb label_groups = 1;
+}
+

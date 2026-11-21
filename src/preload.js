@@ -1,0 +1,33 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('kanali', {
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setSettings: (section, patch) => ipcRenderer.invoke('settings:set', section, patch),
+  retry: () => ipcRenderer.invoke('device:retry'),
+  getStatus: () => ipcRenderer.invoke('device:status'),
+  getHardwareNames: () => ipcRenderer.invoke('hw:names'),
+  mediaControl: (cmd) => ipcRenderer.invoke('media:control', cmd),
+  getUpdate: () => ipcRenderer.invoke('update:get'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  openUpdatePage: () => ipcRenderer.invoke('update:page'),
+  onUpdate: (cb) => ipcRenderer.on('update', (_e, u) => cb(u)),
+  onShowView: (cb) => ipcRenderer.on('show-view', (_e, v) => cb(v)),
+  historyDays: () => ipcRenderer.invoke('history:days'),
+  historyRead: (day) => ipcRenderer.invoke('history:read', day),
+  historyOpen: () => ipcRenderer.invoke('history:open'),
+  onHardwareNames: (cb) => ipcRenderer.on('hw', (_e, n) => cb(n)),
+  listMedia: () => ipcRenderer.invoke('media:list'),
+  addMedia: (target) => ipcRenderer.invoke('media:add', target),
+  deleteMedia: (fileName) => ipcRenderer.invoke('media:delete', fileName),
+  quit: () => ipcRenderer.invoke('app:quit'),
+  getSystem: () => ipcRenderer.invoke('system:get'),
+  setAutostart: (on) => ipcRenderer.invoke('system:autostart', on),
+  createShortcut: () => ipcRenderer.invoke('system:shortcut'),
+  setKanaliAutostart: (on) => ipcRenderer.invoke('system:kanaliAutostart', on),
+  onUpload: (cb) => ipcRenderer.on('upload', (_e, u) => cb(u)),
+  onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
+  onStats: (cb) => ipcRenderer.on('stats', (_e, s) => cb(s)),
+  onMedia: (cb) => ipcRenderer.on('media', (_e, m) => cb(m)),
+  onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s))
+});
