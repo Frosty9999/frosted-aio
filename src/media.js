@@ -48,7 +48,7 @@ const kindOf = (file) => {
  * @param {string} o.outDir     where to write the converted file and a preview copy
  * @param {(pct:number)=>void} o.onProgress  0-100 for the conversion step
  */
-async function convertMedia({ ffmpegDir, src, size = 'full', outDir, onProgress }) {
+async function convertMedia({ ffmpegDir, src, size = 'full', outDir, onProgress, baseName }) {
   const bin = ffmpegDir;
   const ffmpeg = path.join(bin, 'ffmpeg.exe');
   const ffprobe = path.join(bin, 'ffprobe.exe');
@@ -63,11 +63,13 @@ async function convertMedia({ ffmpegDir, src, size = 'full', outDir, onProgress 
 
   const [W, H] = SIZES[size];
   fs.mkdirSync(outDir, { recursive: true });
-  const base = `${stamp()}${path.extname(src).toLowerCase() || '.mp4'}`;
+  // baseName: re-sending a file restored from a backup, under the name the settings already use.
+  const base = baseName || `${stamp()}${path.extname(src).toLowerCase() || '.mp4'}`;
   const previewPath = path.join(outDir, base);
   const deviceName = `${base}.h264_${W}x${H}`;
   const h264Path = path.join(outDir, deviceName);
-  fs.copyFileSync(src, previewPath);
+  const keepSource = path.resolve(src) === path.resolve(previewPath);
+  if (!keepSource) fs.copyFileSync(src, previewPath);
 
   const input = kind === 'image' ? ['-loop', '1', '-t', String(IMAGE_SECONDS), '-i', src] : ['-i', src];
   const args = [
@@ -96,7 +98,7 @@ async function convertMedia({ ffmpegDir, src, size = 'full', outDir, onProgress 
     p.on('close', (code) => {
       if (code === 0) return resolve();
       fs.rm(h264Path, { force: true }, () => {});
-      fs.rm(previewPath, { force: true }, () => {});
+      if (!keepSource) fs.rm(previewPath, { force: true }, () => {});
       reject(new Error(`Conversion failed (ffmpeg exit ${code}). ${errTail.trim().split('\n').pop() || ''}`));
     });
   });

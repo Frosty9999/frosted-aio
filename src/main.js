@@ -10,12 +10,14 @@ const { StatsHistory } = require('./history');
 const updater = require('./updater');
 const system = require('./system');
 const Profiles = require('./profiles');
+const Backup = require('./backup');
 const { RemoteServer, lanAddresses, newPin } = require('./remote');
 const { ensureElevated, isElevated, log: launchLog } = require('./elevate');
 
 // --ui-test (development only): the full app with a throwaway settings folder and no cooler connection,
 // so the interface can be exercised without touching the real install.
 const uiTest = !app.isPackaged && process.argv.includes('--ui-test');
+if (uiTest) globalThis.__electron = require('electron'); // lets automated UI tests stub dialogs
 
 // Same settings folder for the installed app and the development copy (%APPDATA%\frosted-aio).
 app.setPath('userData', uiTest ? path.join(app.getPath('temp'), 'frosted-aio-ui-test') : path.join(app.getPath('appData'), 'frosted-aio'));
@@ -140,10 +142,11 @@ function log(...parts) {
 
 const firstFileName = (v) => (Array.isArray(v) ? firstFileName(v[0]) : typeof v === 'string' ? v : '');
 
-function loadSettings() {
+// from: settings restored from a backup (cleaned up exactly like the file on disk), or nothing to read the file.
+function loadSettings(from) {
   let saved = {};
   try {
-    saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    saved = from || JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
   } catch (e) {
     let listing = [];
     try {
@@ -1390,6 +1393,174 @@ ipcMain.handle('update:install', async () => {
     throw e;
   }
 });
+// ---------- backup & restore ----------
+
+const sendBackup = (b) => win?.webContents.send('backup', b);
+
+ipcMain.handle('backup:info', () => ({ mediaBytes: Backup.dirBytes(mediaDir()), mediaFiles: fs.existsSync(mediaDir()) ? fs.readdirSync(mediaDir()).length : 0 }));
+
+ipcMain.handle('backup:create', async (_e, includeMedia) => {
+  const day = new Date().toISOString().slice(0, 10);
+  const pick = await dialog.showSaveDialog(win, {
+    title: 'Save a Frosted-AIO backup',
+    defaultPath: path.join(app.getPath('documents'), `Frosted-AIO backup ${day}.zip`),
+    filters: [{ name: 'Frosted-AIO backup', extensions: ['zip'] }]
+  });
+  if (pick.canceled || !pick.filePath) return null;
+  sendBackup({ stage: 'saving', pct: 0 });
+  try {
+    const r = await Backup.createBackup({
+      outFile: pick.filePath,
+      settings,
+      mediaDir: mediaDir(),
+      thumbDir: thumbDir(),
+      includeMedia: !!includeMedia,
+      appVersion: app.getVersion(),
+      onProgress: (pct) => sendBackup({ stage: 'saving', pct })
+    });
+    log('backup saved:', r);
+    sendBackup({ stage: 'saved', ...r });
+    return r;
+  } catch (e) {
+    log('backup failed:', e.message);
+    sendBackup({ stage: 'error', message: e.message });
+    throw e;
+  }
+});
+
+ipcMain.handle('backup:show', (_e, file) => file && fs.existsSync(file) && shell.showItemInFolder(file));
+
+// Every cooler file the settings and profiles point at.
+function referencedFiles(s = settings) {
+  const names = new Set();
+  for (const d of [s, ...(s.profiles || []).map((p) => p.data || {})]) {
+    for (const k of ['media', 'splitLeft', 'splitRight']) if (d[k]) names.add(d[k]);
+  }
+  return [...names].filter((n) => !/^default_/.test(n));
+}
+
+// Converts a restored original again and sends it under its old cooler name.
+async function resendFile(deviceName, onPct) {
+  const m = deviceName.match(/^(.+)\.h264_(\d+)x(\d+)$/);
+  const src = m && path.join(mediaDir(), m[1]);
+  if (!m || !Backup.SAFE_NAME.test(m[1]) || !fs.existsSync(src)) throw new Error(`No original for ${deviceName}`);
+  const out = await convertMedia({ ffmpegDir: ffmpegDir(), src, size: m[2] === '1120' ? 'half' : 'full', outDir: mediaDir(), baseName: m[1], onProgress: (p) => onPct(p / 2) });
+  try {
+    if (!thumbFor(out.deviceName)) await makeThumb(out.deviceName, out.previewPath);
+    const trackId = String(Date.now() % 1e6);
+    const wait = waitForTransmit(trackId, (p) => onPct(50 + p / 2));
+    if (!bridge?.transmitFile(out.h264Path, trackId)) throw new Error('The cooler is not connected.');
+    await wait;
+  } finally {
+    fs.rm(out.h264Path, { force: true }, () => {});
+  }
+}
+
+ipcMain.handle('backup:restore', async () => {
+  if (uploading) throw new Error('Wait for the current upload to finish first.');
+  const pick = await dialog.showOpenDialog(win, {
+    title: 'Restore a Frosted-AIO backup',
+    defaultPath: app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: 'Frosted-AIO backup', extensions: ['zip'] }]
+  });
+  if (pick.canceled) return null;
+  sendBackup({ stage: 'opening' });
+  let opened;
+  try {
+    opened = await Backup.openBackup(pick.filePaths[0]);
+  } catch (e) {
+    sendBackup({ stage: 'error', message: e.message });
+    throw e;
+  }
+  const { dir, manifest, settings: restored } = opened;
+  try {
+    const when = new Date(manifest.created).toLocaleString();
+    const hasMedia = manifest.includesMedia && manifest.media?.length;
+    const answer = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Restore backup',
+      message: 'Replace your Frosted-AIO settings with this backup?',
+      detail:
+        `Made ${when} with Frosted-AIO ${manifest.appVersion}.\n` +
+        `Profiles: ${(manifest.profiles || []).join(', ') || 'none'}.\n` +
+        (hasMedia ? `Media library: ${manifest.media.length} files.\n` : 'No media library in this backup.\n') +
+        '\nYour current settings are saved next to the new ones as settings.before-restore.json, just in case. Start at sign-in and the desktop shortcut are not changed.',
+      buttons: ['Restore', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    });
+    if (answer.response !== 0) {
+      sendBackup({ stage: 'idle' });
+      return null;
+    }
+
+    // Keep a copy of what we're replacing, then load the backup like a settings file.
+    try {
+      fs.copyFileSync(settingsFile(), path.join(app.getPath('userData'), 'settings.before-restore.json'));
+    } catch {
+      /* no settings file yet */
+    }
+    const copied = Backup.copyLibrary(dir, { mediaDir: mediaDir(), thumbDir: thumbDir(), includeMedia: !!hasMedia });
+    loadSettings(restored);
+    saveSettings();
+    log('restored backup from', manifest.created, 'files copied:', copied);
+    if (bridge?.device) pushAll();
+    applyNowPlayingSetting();
+    registerHotkeys();
+    scheduleAutoSwitch();
+    applyRemote();
+    scheduleUpdateChecks();
+    for (const m of deviceMedia) m.thumb = thumbFor(m.fileName);
+    win?.webContents.send('settings', settings);
+    win?.webContents.send('media', deviceMedia);
+    buildTrayMenu();
+
+    // On a new PC or after a cooler reset, files the settings use may be missing from the cooler.
+    const onCooler = new Set(deviceMedia.map((m) => m.fileName));
+    const missing = bridge?.device ? referencedFiles().filter((n) => !onCooler.has(n)) : [];
+    const canSend = missing.filter((n) => fs.existsSync(path.join(mediaDir(), n.replace(/\.h264_\d+x\d+$/, ''))));
+    let sent = 0;
+    if (canSend.length) {
+      const up = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: 'Restore backup',
+        message: `${canSend.length} file${canSend.length > 1 ? 's' : ''} your settings use ${canSend.length > 1 ? "aren't" : "isn't"} on the cooler.`,
+        detail: 'Convert and upload them from the backup now? This can take a few minutes.',
+        buttons: ['Upload', 'Not now'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      });
+      if (up.response === 0) {
+        uploading = true;
+        try {
+          for (let i = 0; i < canSend.length; i++) {
+            const label = `Uploading ${i + 1} of ${canSend.length}`;
+            await resendFile(canSend[i], (pct) => sendBackup({ stage: 'uploading', label, pct: Math.round(pct) }));
+            sent++;
+          }
+        } catch (e) {
+          log('restore upload failed:', e.message);
+          sendBackup({ stage: 'error', message: `Settings restored, but uploading stopped: ${e.message}` });
+        } finally {
+          uploading = false;
+        }
+        if (bridge?.device) {
+          bridge.setUserConfig(userConfig());
+          bridge.requestFileList();
+        }
+      }
+    }
+    const result = { stage: 'restored', copied, missing: missing.length, sent, profiles: settings.profiles.length };
+    if (sent === canSend.length || !canSend.length) sendBackup(result);
+    return settings;
+  } finally {
+    Backup.discard(dir);
+  }
+});
+
 ipcMain.handle('history:days', () => {
   history ||= new StatsHistory(historyDir());
   return { dir: historyDir(), days: history.days() };

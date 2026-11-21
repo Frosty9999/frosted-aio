@@ -40,5 +40,10 @@ contextBridge.exposeInMainWorld('kanali', {
   onHotkeys: (cb) => ipcRenderer.on('hotkeys', (_e, failed) => cb(failed)),
   remoteInfo: () => ipcRenderer.invoke('remote:info'),
   remoteNewPin: () => ipcRenderer.invoke('remote:newPin'),
-  onRemote: (cb) => ipcRenderer.on('remote', (_e, r) => cb(r))
+  onRemote: (cb) => ipcRenderer.on('remote', (_e, r) => cb(r)),
+  backupInfo: () => ipcRenderer.invoke('backup:info'),
+  createBackup: (includeMedia) => ipcRenderer.invoke('backup:create', includeMedia),
+  restoreBackup: () => ipcRenderer.invoke('backup:restore'),
+  showBackup: (file) => ipcRenderer.invoke('backup:show', file),
+  onBackup: (cb) => ipcRenderer.on('backup', (_e, b) => cb(b))
 });

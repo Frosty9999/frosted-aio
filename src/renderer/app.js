@@ -1405,6 +1405,68 @@ document.querySelector('.rail [data-view="controls"]').addEventListener('click',
   renderHotkeys(true);
 });
 
+// ---------- backup & restore ----------
+
+const fmtBytes = (b) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${Math.round(b / 1024 ** 2)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+let backupFile = null;
+let backupHide;
+
+function showBackup(b) {
+  const box = $('backupStatus');
+  clearTimeout(backupHide);
+  if (!b || b.stage === 'idle') return (box.hidden = true);
+  box.hidden = false;
+  box.classList.toggle('error', b.stage === 'error');
+  box.classList.toggle('done', b.stage === 'saved' || b.stage === 'restored');
+  const busy = ['saving', 'opening', 'uploading'].includes(b.stage);
+  $('backupSave').disabled = $('backupRestore').disabled = busy;
+  const pct = b.stage === 'saving' || b.stage === 'uploading' ? b.pct || 0 : b.stage === 'opening' ? 5 : 100;
+  $('backupBar').style.width = `${b.stage === 'error' ? 0 : pct}%`;
+  $('backupBar').parentElement.hidden = !busy;
+  $('backupShow').hidden = b.stage !== 'saved';
+  if (b.stage === 'saved') backupFile = b.file;
+  $('backupText').textContent = {
+    saving: `Saving backup… ${pct}%`,
+    opening: 'Opening the backup…',
+    uploading: `${b.label}… ${pct}%`,
+    saved: `Backup saved (${fmtBytes(b.bytes || 0)}${b.media ? `, ${b.media} media files` : ''}): ${b.file}`,
+    restored: `Restored ${b.profiles} profile${b.profiles === 1 ? '' : 's'}${b.copied ? ` and ${b.copied} files` : ''}.` +
+      (b.sent ? ` Uploaded ${b.sent} to the cooler.` : b.missing ? ` ${b.missing} file${b.missing === 1 ? '' : 's'} your settings use ${b.missing === 1 ? "isn't" : "aren't"} on the cooler.` : ''),
+    error: b.message || 'Something went wrong.'
+  }[b.stage] || '';
+  if (b.stage === 'saved' || b.stage === 'restored') backupHide = setTimeout(() => (box.hidden = true), 20000);
+}
+api.onBackup?.(showBackup);
+
+async function loadBackupInfo() {
+  const info = await api.backupInfo?.();
+  if (!info) return;
+  $('backupMediaLabel').textContent = info.mediaBytes
+    ? `Include my media library (${fmtBytes(info.mediaBytes)} of original images, GIFs and videos)`
+    : 'Include my media library (empty)';
+  $('backupMedia').disabled = !info.mediaBytes;
+}
+document.querySelector('.rail [data-view="settings"]').addEventListener('click', loadBackupInfo);
+$('backupSave').onclick = async () => {
+  try {
+    await api.createBackup($('backupMedia').checked);
+  } catch {
+    /* shown in the status line */
+  }
+};
+$('backupRestore').onclick = async () => {
+  try {
+    const next = await api.restoreBackup();
+    if (next) {
+      s = next;
+      render();
+    }
+  } catch {
+    /* shown in the status line */
+  }
+};
+$('backupShow').onclick = () => backupFile && api.showBackup(backupFile);
+
 // ---------- render ----------
 
 function render() {

@@ -471,6 +471,13 @@ button.ghost.danger:hover { color: #f5a3a3; border-color: rgba(240, 107, 107, 0.
 .remote-pin b { font: 600 26px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 0.18em; user-select: text; }
 .remote-err { color: #f5a3a3; margin: 0; font-size: 12.5px; }
 
+/* ---------- backup & restore ---------- */
+.backup-media { margin-top: 10px; font-size: 12.5px; }
+.backup-progress { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.backup-progress .progress { margin-top: 8px; }
+.backup-status.error .backup-progress { color: #f5a3a3; }
+.backup-status.done .backup-progress { color: var(--accent); }
+
 /* ---------- fan curve ---------- */
 #curve { width: 100%; height: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: block; }
 #curve .grid line { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }

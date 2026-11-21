@@ -31,6 +31,8 @@ software is needed or included.
   6-digit PIN) to switch profiles and videos, change brightness, and toggle night mode and fan boost.
 - **Night mode:** dim or turn off the screen on a schedule or when the PC is idle.
 - **Stats history:** one CSV per day in `Documents\Frosted-AIO\History`, with charts in the app.
+- **Backup & restore:** save every setting and profile (and optionally your media library) to one .zip.
+  Restoring on a new PC can re-upload anything your profiles use that isn't on the cooler.
 - **Runs quietly:** system tray, start at sign-in, no administrator prompt after install, and in-app updates
   from GitHub Releases.
 
@@ -58,6 +60,7 @@ software is needed or included.
 | `src/overlay.js` | Lays out the stats overlay. The same code drives the cooler and the in-app preview. |
 | `src/nowplaying.ps1` | Reads Windows' media controls for Now Playing. |
 | `src/updater.js` | Checks this repo's latest release and installs it. |
+| `src/backup.js` | Backup .zip files (via Windows' built-in .NET zip support) and safe restore. |
 | `src/profiles.js` | Profiles and the running-program check for auto-switching. |
 | `src/remote.js`, `src/remote/` | The phone remote's web server and page. It only answers devices on the local network, and needs the PIN. |
 

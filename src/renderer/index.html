@@ -429,6 +429,32 @@
           </div>
         </div>
 
+        <h4>Backup &amp; restore</h4>
+        <div class="list tight">
+          <div class="item">
+            <div>
+              <b>Back up Frosted-AIO</b>
+              <p>Saves every setting, profile, shortcut and alert to one .zip file, plus the preview images.</p>
+              <label class="check backup-media"><input type="checkbox" id="backupMedia" /><span id="backupMediaLabel">Include my media library (the original images, GIFs and videos)</span></label>
+            </div>
+            <button class="ghost" id="backupSave">Save backup…</button>
+          </div>
+          <div class="item">
+            <div>
+              <b>Restore from a backup</b>
+              <p>Replaces your settings and profiles with the backup's, after asking. On a new PC it can upload anything your profiles use that isn't on the cooler.</p>
+            </div>
+            <button class="ghost" id="backupRestore">Restore…</button>
+          </div>
+          <div class="item backup-status" id="backupStatus" hidden>
+            <div class="backup-progress">
+              <span id="backupText"></span>
+              <div class="progress"><i id="backupBar"></i></div>
+            </div>
+            <button class="ghost" id="backupShow" hidden>Show file</button>
+          </div>
+        </div>
+
         <h4>TRYX KANALI (the original app, if still installed)</h4>
         <div class="list tight">
           <div class="item" id="kanaliRow" hidden>
